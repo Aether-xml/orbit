@@ -17,6 +17,10 @@ const registerSchema = z.object({
     .max(30, 'En fazla 30 karakter')
     .regex(/^[a-z0-9_]+$/, 'Sadece küçük harf, rakam ve alt çizgi'),
   password: z.string().min(8, 'En az 8 karakter'),
+  confirmPassword: z.string(),
+}).refine((d) => d.password === d.confirmPassword, {
+  message: 'Şifreler eşleşmiyor',
+  path: ['confirmPassword'],
 })
 
 type RegisterForm = z.infer<typeof registerSchema>
@@ -27,6 +31,7 @@ export default function Register() {
   const navigate = useNavigate()
   const { loginWithGoogle } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle')
 
@@ -283,6 +288,43 @@ export default function Register() {
                   className="text-error text-xs"
                 >
                   {errors.password.message}
+                </motion.p>
+              </AnimatePresence>
+            )}
+          </div>
+
+          {/* Şifreyi Onayla */}
+          <div className="space-y-1.5">
+            <label htmlFor="confirmPassword" className="text-text-secondary text-sm">Şifreyi Onayla</label>
+            <div className="relative">
+              <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+              <input
+                id="confirmPassword"
+                type={showConfirmPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                placeholder="Şifreni tekrar gir"
+                {...register('confirmPassword')}
+                className="w-full bg-bg-surface border border-line rounded-lg pl-9 pr-10 py-2.5 text-text-primary text-sm placeholder:text-text-muted focus:border-accent transition-default"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary transition-default"
+              >
+                {showConfirmPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            </div>
+            {errors.confirmPassword && (
+              <AnimatePresence>
+                <motion.p
+                  key="confirm-error"
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  className="text-error text-xs"
+                >
+                  {errors.confirmPassword.message}
                 </motion.p>
               </AnimatePresence>
             )}
