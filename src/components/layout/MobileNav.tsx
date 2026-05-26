@@ -17,7 +17,7 @@ export default function MobileNav() {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-30 bg-bg-base border-t border-line pb-safe">
-      <div className="flex items-center justify-around px-2 py-2">
+      <div className="flex items-center justify-around px-2 py-1">
         {navItems.map(({ to, icon: Icon, label }) => {
           const hasBadge = to === '/bildirimler' && unreadNotifications > 0
           return (
@@ -26,7 +26,7 @@ export default function MobileNav() {
               to={to}
               className={({ isActive }) =>
                 cn(
-                  'flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg transition-default min-w-[44px] min-h-[44px] justify-center',
+                  'flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg transition-default min-w-[44px] min-h-[44px] justify-center',
                   isActive ? 'text-accent' : 'text-text-muted'
                 )
               }
@@ -47,7 +47,7 @@ export default function MobileNav() {
           to={profile?.username ? `/${profile.username}` : '/ana-sayfa'}
           className={({ isActive }) =>
             cn(
-              'flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg transition-default min-w-[44px] min-h-[44px] justify-center',
+              'flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg transition-default min-w-[44px] min-h-[44px] justify-center',
               isActive ? 'text-accent' : 'text-text-muted'
             )
           }
