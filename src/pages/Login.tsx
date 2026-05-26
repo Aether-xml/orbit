@@ -27,8 +27,8 @@ export default function Login() {
   const {
     register,
     handleSubmit,
-    formState: { errors },
-  } = useForm<LoginForm>({ resolver: zodResolver(loginSchema) })
+    formState: { errors, isValid },
+  } = useForm<LoginForm>({ resolver: zodResolver(loginSchema), mode: 'onChange' })
 
   const onSubmit = async (data: LoginForm) => {
     if (!turnstileToken) {
@@ -173,7 +173,7 @@ export default function Login() {
           {/* Giriş butonu */}
           <button
             type="submit"
-            disabled={isLoading || !turnstileToken}
+            disabled={isLoading || !isValid || !turnstileToken}
             className="w-full bg-accent hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed text-text-inverse font-semibold py-3 rounded-lg transition-default"
           >
             {isLoading ? 'Giriş yapılıyor…' : 'Giriş Yap'}

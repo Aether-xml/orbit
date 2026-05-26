@@ -41,8 +41,8 @@ export default function Register() {
     register,
     handleSubmit,
     watch,
-    formState: { errors },
-  } = useForm<RegisterForm>({ resolver: zodResolver(registerSchema) })
+    formState: { errors, isValid },
+  } = useForm<RegisterForm>({ resolver: zodResolver(registerSchema), mode: 'onChange' })
 
   const watchedUsername = watch('username', '')
 
@@ -356,7 +356,7 @@ export default function Register() {
 
           <button
             type="submit"
-            disabled={isLoading || usernameStatus === 'taken' || !turnstileToken}
+            disabled={isLoading || !isValid || usernameStatus === 'taken' || !turnstileToken}
             className="w-full bg-accent hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed text-text-inverse font-semibold py-3 rounded-lg transition-default"
           >
             {isLoading ? 'Kayıt olunuyor…' : 'Kayıt Ol'}
