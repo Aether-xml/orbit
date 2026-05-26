@@ -41,7 +41,7 @@ export default function Register() {
 
   // Kullanıcı adı müsaitlik kontrolü — debounced
   const checkUsername = useCallback(async (username: string) => {
-    if (username.length < 3) { setUsernameStatus('idle'); return }
+    if (username.length < 3 || !/^[a-z0-9_]+$/.test(username)) { setUsernameStatus('idle'); return }
     setUsernameStatus('checking')
 
     const controller = new AbortController()
@@ -168,6 +168,11 @@ export default function Register() {
                 type="text"
                 autoComplete="username"
                 placeholder="kullanici_adi"
+                maxLength={30}
+                onKeyDown={(e) => {
+                  const allowed = /^[a-z0-9_]$/
+                  if (e.key.length === 1 && !allowed.test(e.key)) e.preventDefault()
+                }}
                 {...register('username')}
                 className="w-full bg-bg-surface border border-line rounded-lg pl-9 pr-9 py-2.5 text-text-primary text-sm placeholder:text-text-muted focus:border-accent transition-default"
               />
