@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils'
+import { getAvatarColor } from '@/lib/utils'
 
 type Size = 'xs' | 'sm' | 'md' | 'lg' | 'xl'
 
@@ -30,16 +31,19 @@ export default function Avatar({
   alt,
 }: AvatarProps) {
   const s = sizes[size]
-  const initial = fallback.trim()[0]?.toUpperCase() ?? '?'
+  const initial = fallback.trim().charAt(0).toUpperCase()
+  const bgColor = getAvatarColor(fallback)
 
   return (
     <div className={cn('relative flex-shrink-0', className)}>
       <div
         className={cn(
           s.container,
-          'rounded-full overflow-hidden bg-bg-elevated border border-line flex items-center justify-center',
-          isNova && `${s.ring} ring-accent ring-offset-1 ring-offset-bg-base`
+          'rounded-full overflow-hidden border border-line flex items-center justify-center',
+          isNova && `${s.ring} ring-accent ring-offset-1 ring-offset-bg-base`,
+          src && 'bg-bg-elevated'
         )}
+        style={!src ? { backgroundColor: bgColor } : undefined}
       >
         {src ? (
           <img
@@ -49,7 +53,7 @@ export default function Avatar({
             loading="lazy"
           />
         ) : (
-          <span className={cn(s.font, 'font-medium text-text-secondary select-none')}>
+          <span className={cn(s.font, 'font-semibold text-white select-none')}>
             {initial}
           </span>
         )}

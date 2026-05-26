@@ -146,7 +146,11 @@ export default function Feed() {
             >
               {t === 'following' ? 'Takip Ettiklerin' : 'Keşfet'}
               {tab === t && (
-                <span className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-accent rounded-full" />
+                <motion.span
+                  layoutId="feed-tab-indicator"
+                  className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-accent rounded-full"
+                  transition={{ type: 'spring', stiffness: 500, damping: 40 }}
+                />
               )}
             </button>
           ))}

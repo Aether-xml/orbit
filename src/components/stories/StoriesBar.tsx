@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, getAvatarColor } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from '@/store/uiStore'
@@ -9,7 +9,6 @@ import type { Story, Profile } from '@/types/database'
 import StoryViewer from './StoryViewer'
 import Modal from '@/components/ui/Modal'
 import Button from '@/components/ui/Button'
-import Avatar from '@/components/ui/Avatar'
 
 export type StoryWithAuthor = Story & {
   profiles: Pick<Profile, 'id' | 'username' | 'display_name' | 'avatar_url' | 'is_nova_plus'>
@@ -121,7 +120,7 @@ export default function StoriesBar() {
 
   return (
     <>
-      <div className="flex gap-4 px-4 py-3 overflow-x-auto scrollbar-hide border-b border-line">
+      <div className="flex gap-3 px-4 py-3 overflow-x-auto scrollbar-hide border-b border-line">
         {/* My story / Add story */}
         <button
           type="button"
@@ -132,9 +131,9 @@ export default function StoriesBar() {
               setCreateOpen(true)
             }
           }}
-          className="flex flex-col items-center gap-1.5 flex-shrink-0"
+          className="flex flex-col items-center gap-1.5 flex-shrink-0 w-14"
         >
-          <div className="relative">
+          <div className="relative w-14 h-14">
             <div className={cn(
               'w-14 h-14 rounded-full',
               myGroup
@@ -145,8 +144,11 @@ export default function StoriesBar() {
                 {profile?.avatar_url ? (
                   <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-text-muted text-lg font-medium">
-                    {profile?.display_name[0]?.toUpperCase()}
+                  <div
+                    className="w-full h-full flex items-center justify-center text-lg font-semibold text-white"
+                    style={{ backgroundColor: getAvatarColor(profile?.display_name ?? 'me') }}
+                  >
+                    {profile?.display_name?.charAt(0).toUpperCase()}
                   </div>
                 )}
               </div>
@@ -157,7 +159,7 @@ export default function StoriesBar() {
               </span>
             )}
           </div>
-          <span className="text-[11px] text-text-muted w-14 text-center truncate">
+          <span className="text-[11px] text-text-muted w-14 text-center truncate leading-tight">
             {myGroup ? 'Hikayem' : 'Hikaye ekle'}
           </span>
         </button>
@@ -168,19 +170,35 @@ export default function StoriesBar() {
             key={group.userId}
             type="button"
             onClick={() => setViewingIdx(myGroup ? i + 1 : i)}
-            className="flex flex-col items-center gap-1.5 flex-shrink-0"
+            className="flex flex-col items-center gap-1.5 flex-shrink-0 w-14"
           >
-            <div className={cn(
-              'w-14 h-14 rounded-full p-0.5',
-              group.hasUnseen
-                ? 'bg-gradient-to-tr from-accent to-purple-500'
-                : 'bg-bg-elevated border border-line'
-            )}>
-              <div className="w-full h-full rounded-full overflow-hidden bg-bg-elevated">
-                <Avatar src={group.profile.avatar_url} fallback={group.profile.display_name} size="lg" />
+            <div className="w-14 h-14">
+              <div className={cn(
+                'w-14 h-14 rounded-full p-0.5',
+                group.hasUnseen
+                  ? 'bg-gradient-to-tr from-accent to-purple-500'
+                  : 'bg-bg-elevated border border-line'
+              )}>
+                <div className="w-full h-full rounded-full overflow-hidden">
+                  {group.profile.avatar_url ? (
+                    <img
+                      src={group.profile.avatar_url}
+                      alt={group.profile.display_name}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div
+                      className="w-full h-full flex items-center justify-center text-base font-semibold text-white"
+                      style={{ backgroundColor: getAvatarColor(group.profile.display_name) }}
+                    >
+                      {group.profile.display_name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-            <span className="text-[11px] text-text-muted w-14 text-center truncate">
+            <span className="text-[11px] text-text-muted w-14 text-center truncate leading-tight">
               {group.profile.username}
             </span>
           </button>

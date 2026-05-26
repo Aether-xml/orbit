@@ -25,3 +25,28 @@ export function slugify(text: string): string {
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_|_$/g, '')
 }
+
+const AVATAR_PALETTE = [
+  '#5C6BC0', // indigo
+  '#7C3AED', // violet
+  '#0891B2', // cyan
+  '#059669', // emerald
+  '#D97706', // amber
+  '#DB2777', // pink
+  '#2563EB', // blue
+  '#9333EA', // purple
+  '#16A34A', // green
+  '#0F766E', // teal
+  '#C2410C', // orange
+  '#7C2D12', // brown
+]
+
+export function getAvatarColor(seed: string): string {
+  let h = 0
+  for (let i = 0; i < seed.length; i++) {
+    h = (h << 5) - h + seed.charCodeAt(i)
+    h |= 0
+  }
+  return AVATAR_PALETTE[Math.abs(h) % AVATAR_PALETTE.length] ?? '#5C6BC0'
+}
+
