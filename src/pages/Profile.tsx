@@ -101,8 +101,9 @@ function FollowButton({
         type="button"
         onClick={onToggle}
         className={cn(
-          'group px-4 py-2 rounded-lg text-sm font-semibold border border-line text-text-primary',
-          'hover:border-error hover:text-error transition-default flex items-center justify-center',
+          'group px-4 py-2 rounded-lg text-sm font-semibold',
+          'border border-line bg-bg-surface hover:bg-bg-elevated text-text-primary',
+          'hover:border-error/60 hover:text-error transition-default flex items-center justify-center',
           className
         )}
       >
@@ -119,8 +120,9 @@ function FollowButton({
         type="button"
         onClick={onToggle}
         className={cn(
-          'group px-4 py-2 rounded-lg text-sm font-semibold border border-line text-text-muted',
-          'hover:border-error hover:text-error transition-default flex items-center justify-center',
+          'group px-4 py-2 rounded-lg text-sm font-semibold',
+          'border border-line bg-bg-surface hover:bg-bg-elevated text-text-muted',
+          'hover:border-error/60 hover:text-error transition-default flex items-center justify-center',
           className
         )}
       >

@@ -89,7 +89,7 @@ function PollDisplay({ post }: PollDisplayProps) {
 
   return (
     <div
-      className="mt-3 space-y-2"
+      className="mt-2 space-y-2"
       onClick={(e) => e.stopPropagation()}
     >
       {pollData.options.map((opt, i) => {
@@ -203,7 +203,7 @@ function RepostDropdown({ reposted, repostCount, onRepost, onQuote }: RepostDrop
         type="button"
         onClick={(e) => { e.stopPropagation(); setOpen((v) => !v) }}
         className={cn(
-          'group flex items-center gap-1 p-1.5 rounded-full transition-default',
+          'group flex items-center gap-1 p-1 rounded-full transition-default',
           reposted ? 'text-success' : 'text-text-muted hover:text-success hover:bg-success/10'
         )}
       >
@@ -409,12 +409,12 @@ export default function PostCard({
     <>
       <article
         className={cn(
-          'px-4 py-3 hover:bg-bg-overlay/40 transition-default cursor-pointer',
+          'px-4 py-2.5 hover:bg-bg-overlay/40 transition-default cursor-pointer',
           showBorder && 'border-b border-line'
         )}
         onClick={() => navigate(`/gonderi/${post.id}`)}
       >
-        <div className="flex gap-3">
+        <div className="flex gap-2.5">
           {/* Avatar */}
           <button
             type="button"
@@ -473,7 +473,7 @@ export default function PostCard({
             {post.media_urls.length > 0 && (
               <div
                 className={cn(
-                  'mt-3 rounded-xl overflow-hidden',
+                  'mt-2 rounded-xl overflow-hidden',
                   post.media_urls.length === 1 && 'max-h-[400px]',
                   post.media_urls.length === 2 && 'grid grid-cols-2 gap-0.5',
                   post.media_urls.length >= 3 && 'grid grid-cols-2 gap-0.5'
@@ -511,12 +511,12 @@ export default function PostCard({
             )}
 
             {/* Action bar */}
-            <div className="flex items-center justify-between mt-3 -ml-1.5 max-w-xs">
+            <div className="flex items-center justify-between mt-2 -ml-1 max-w-xs">
               {/* Comment */}
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); navigate(`/gonderi/${post.id}`) }}
-                className="group flex items-center gap-1.5 p-1.5 rounded-full text-text-muted hover:text-accent hover:bg-accent/10 transition-default"
+                className="group flex items-center gap-1 p-1 rounded-full text-text-muted hover:text-accent hover:bg-accent/10 transition-default"
               >
                 <MessageCircle size={17} />
                 {post.reply_count > 0 && (
@@ -537,7 +537,7 @@ export default function PostCard({
                 type="button"
                 onClick={(e) => void handleLike(e)}
                 className={cn(
-                  'group flex items-center gap-1.5 p-1.5 rounded-full transition-default',
+                  'group flex items-center gap-1 p-1 rounded-full transition-default',
                   liked
                     ? 'text-error'
                     : 'text-text-muted hover:text-error hover:bg-error/10'
@@ -554,7 +554,7 @@ export default function PostCard({
                 type="button"
                 onClick={(e) => void handleBookmark(e)}
                 className={cn(
-                  'group flex items-center gap-1.5 p-1.5 rounded-full transition-default',
+                  'group flex items-center gap-1 p-1 rounded-full transition-default',
                   bookmarked
                     ? 'text-accent'
                     : 'text-text-muted hover:text-accent hover:bg-accent/10'
