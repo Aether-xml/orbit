@@ -1,208 +1,151 @@
-import { Link, useLocation } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { NavLink, useNavigate } from 'react-router-dom'
 import {
-  Home,
-  Compass,
-  Clapperboard,
-  Globe,
-  Bell,
-  Mail,
-  Settings,
-  LogOut,
-  Star,
-  PenSquare,
+  Home, Search, Play, Globe, MessageCircle,
+  Bell, User, Settings, LogOut, Star,
 } from 'lucide-react'
-import { Avatar } from '@/components/ui/Avatar'
-import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
-import { useAuth, useSignOut } from '@/hooks/useAuth'
-import { useNotificationStore } from '@/store/notificationStore'
+import { useAuth } from '@/hooks/useAuth'
+import { useAuthStore } from '@/store/authStore'
+import { useUnreadCounts } from '@/hooks/useUnreadCounts'
 
-interface NavItem {
-  path: string
-  label: string
-  icon: React.ElementType
-  badge?: number
-}
-
-const useNavItems = (unreadCount: number): NavItem[] => [
-  { path: '/ana-sayfa', label: 'Ana Sayfa', icon: Home },
-  { path: '/kesif', label: 'Keşfet', icon: Compass },
-  { path: '/reels', label: 'Reels', icon: Clapperboard },
-  { path: '/sunucular', label: 'Sunucular', icon: Globe },
-  {
-    path: '/bildirimler',
-    label: 'Bildirimler',
-    icon: Bell,
-    badge: unreadCount > 0 ? unreadCount : undefined,
-  },
-  { path: '/mesajlar', label: 'Mesajlar', icon: Mail },
+const navItems = [
+  { to: '/ana-sayfa',   icon: Home,          label: 'Ana Sayfa'   },
+  { to: '/kesif',       icon: Search,        label: 'Keşfet'      },
+  { to: '/reels',       icon: Play,          label: 'Reels'       },
+  { to: '/sunucular',   icon: Globe,         label: 'Sunucular'   },
+  { to: '/mesajlar',    icon: MessageCircle, label: 'Mesajlar'    },
+  { to: '/bildirimler', icon: Bell,          label: 'Bildirimler' },
 ]
 
-interface SidebarNavItemProps {
-  item: NavItem
-  isActive: boolean
-}
-
-const SidebarNavItem = ({ item, isActive }: SidebarNavItemProps) => {
-  const Icon = item.icon
+export default function Sidebar() {
+  const { profile } = useAuthStore()
+  const { logout } = useAuth()
+  const navigate = useNavigate()
+  const { unreadNotifications, unreadMessages } = useUnreadCounts()
 
   return (
-    <Link
-      to={item.path}
-      className={cn(
-        'relative flex items-center gap-3 px-3 py-2.5',
-        'rounded-[var(--radius-lg)]',
-        'text-sm font-medium',
-        'transition-all duration-[var(--transition)]',
-        isActive
-          ? 'bg-[var(--accent-muted)] text-[var(--accent)]'
-          : 'text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]'
-      )}
-    >
-      {/* Active indicator */}
-      {isActive && (
-        <motion.div
-          layoutId="sidebar-active"
-          className="absolute left-0 w-0.5 h-5 bg-[var(--accent)] rounded-full"
-          transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-        />
-      )}
-
-      <div className="relative">
-        <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
-        {item.badge !== undefined && (
-          <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-0.5 bg-[var(--accent)] text-[var(--text-inverse)] text-[10px] font-bold rounded-full flex items-center justify-center">
-            {item.badge > 99 ? '99+' : item.badge}
-          </span>
-        )}
-      </div>
-
-      <span>{item.label}</span>
-    </Link>
-  )
-}
-
-export const Sidebar = () => {
-  const location = useLocation()
-  const { profile } = useAuth()
-  const { signOut } = useSignOut()
-  const unreadCount = useNotificationStore((s) => s.unreadCount)
-  const navItems = useNavItems(unreadCount)
-
-  return (
-    <aside className="fixed left-0 top-0 h-full w-[240px] flex flex-col border-r border-[var(--border)] bg-[var(--bg-base)] z-40">
+    <aside className="fixed left-0 top-0 h-dvh w-[240px] flex flex-col border-r border-line bg-bg-base z-30">
       {/* Logo */}
-      <div className="px-4 py-5">
-        <Link to="/ana-sayfa" className="flex items-center gap-2">
-          <span className="font-display text-2xl text-[var(--accent)] italic">
-            Orbit
-          </span>
-          <span className="text-[var(--text-muted)] text-xs">🪐</span>
-        </Link>
+      <div className="px-6 py-5">
+        <span className="font-display text-2xl text-text-primary">Orbit</span>
       </div>
 
-      {/* Navigasyon */}
-      <nav className="flex-1 px-2 space-y-0.5 overflow-y-auto">
-        {navItems.map((item) => (
-          <SidebarNavItem
-            key={item.path}
-            item={item}
-            isActive={location.pathname === item.path}
-          />
-        ))}
-      </nav>
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto px-3 space-y-1">
+        {navItems.map(({ to, icon: Icon, label }) => {
+          const badge =
+            (to === '/bildirimler' && unreadNotifications > 0) ||
+            (to === '/mesajlar' && unreadMessages > 0)
 
-      {/* Post Oluştur */}
-      <div className="px-3 py-3">
-        <Button
-          variant="primary"
-          fullWidth
-          leftIcon={<PenSquare size={16} />}
-          onClick={() => {/* PostComposer modal açılır - Faz 2'de */}}
-        >
-          Paylaş
-        </Button>
-      </div>
+          return (
+            <NavLink
+              key={to}
+              to={to}
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-default',
+                  isActive
+                    ? 'bg-accent-muted text-accent'
+                    : 'text-text-secondary hover:bg-bg-elevated hover:text-text-primary'
+                )
+              }
+            >
+              <div className="relative">
+                <Icon size={18} />
+                {badge && (
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-error rounded-full" />
+                )}
+              </div>
+              {label}
+            </NavLink>
+          )
+        })}
 
-      {/* Alt: Ayarlar / Nova+ / Çıkış */}
-      <div className="border-t border-[var(--border)] p-3 space-y-0.5">
-        {profile && !profile.is_nova_plus && (
-          <Link
-            to="/nova-plus"
-            className={cn(
-              'flex items-center gap-3 px-3 py-2.5',
-              'rounded-[var(--radius-lg)]',
-              'text-sm font-medium text-[var(--accent)]',
-              'hover:bg-[var(--accent-muted)]',
-              'transition-colors duration-[var(--transition)]'
-            )}
+        {/* Profil linki */}
+        {profile && (
+          <NavLink
+            to={`/${profile.username}`}
+            className={({ isActive }) =>
+              cn(
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-default',
+                isActive
+                  ? 'bg-accent-muted text-accent'
+                  : 'text-text-secondary hover:bg-bg-elevated hover:text-text-primary'
+              )
+            }
           >
-            <Star size={18} />
-            <span>Nova+ Al</span>
-          </Link>
+            <User size={18} />
+            Profil
+          </NavLink>
         )}
 
-        <Link
+        <NavLink
           to="/ayarlar"
-          className={cn(
-            'flex items-center gap-3 px-3 py-2.5',
-            'rounded-[var(--radius-lg)]',
-            'text-sm font-medium',
-            location.pathname === '/ayarlar'
-              ? 'bg-[var(--accent-muted)] text-[var(--accent)]'
-              : 'text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]',
-            'transition-colors duration-[var(--transition)]'
-          )}
+          className={({ isActive }) =>
+            cn(
+              'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-default',
+              isActive
+                ? 'bg-accent-muted text-accent'
+                : 'text-text-secondary hover:bg-bg-elevated hover:text-text-primary'
+            )
+          }
         >
           <Settings size={18} />
-          <span>Ayarlar</span>
-        </Link>
+          Ayarlar
+        </NavLink>
+      </nav>
 
-        <button
-          onClick={signOut}
-          className={cn(
-            'w-full flex items-center gap-3 px-3 py-2.5',
-            'rounded-[var(--radius-lg)]',
-            'text-sm font-medium text-[var(--text-secondary)]',
-            'hover:bg-[var(--bg-elevated)] hover:text-[var(--error)]',
-            'transition-colors duration-[var(--transition)]'
-          )}
-        >
-          <LogOut size={18} />
-          <span>Çıkış</span>
-        </button>
-      </div>
+      {/* Alt: Nova+ + profil */}
+      <div className="px-3 pb-4 space-y-2">
+        {/* Nova+ butonu — sadece ücretsiz kullanıcılara */}
+        {profile && !profile.is_nova_plus && (
+          <button
+            type="button"
+            onClick={() => navigate('/nova-plus')}
+            className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg bg-accent-muted border border-accent-border hover:bg-accent/10 transition-default"
+          >
+            <Star size={15} className="text-accent" />
+            <div className="text-left">
+              <p className="text-accent text-xs font-semibold">Nova+'ya Geç</p>
+              <p className="text-text-muted text-xs">500 karakter · sınırsız</p>
+            </div>
+          </button>
+        )}
 
-      {/* Profil kısayolu */}
-      {profile && (
-        <Link
-          to={`/${profile.username}`}
-          className={cn(
-            'flex items-center gap-3 p-3 m-2',
-            'rounded-[var(--radius-lg)]',
-            'border border-[var(--border)]',
-            'bg-[var(--bg-surface)]',
-            'hover:bg-[var(--bg-elevated)]',
-            'transition-colors duration-[var(--transition)]'
-          )}
-        >
-          <Avatar
-            src={profile.avatar_url}
-            fallback={profile.display_name}
-            size="sm"
-            isNova={profile.is_nova_plus}
-          />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-[var(--text-primary)] truncate">
-              {profile.display_name}
-            </p>
-            <p className="text-xs text-[var(--text-muted)] truncate">
-              @{profile.username}
-            </p>
+        {/* Kullanıcı kartı */}
+        {profile && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-bg-elevated transition-default group">
+            {/* Avatar */}
+            <div className="w-8 h-8 rounded-full bg-bg-elevated border border-line overflow-hidden flex-shrink-0">
+              {profile.avatar_url ? (
+                <img src={profile.avatar_url} alt={profile.display_name} className="w-full h-full object-cover" loading="lazy" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-xs text-text-muted font-medium">
+                  {profile.display_name[0]?.toUpperCase()}
+                </div>
+              )}
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <p className="text-text-primary text-sm font-medium truncate leading-tight">
+                {profile.display_name}
+                {profile.is_nova_plus && <span className="text-accent ml-1 text-xs">⭐</span>}
+              </p>
+              <p className="text-text-muted text-xs truncate">@{profile.username}</p>
+            </div>
+
+            {/* Çıkış */}
+            <button
+              type="button"
+              onClick={logout}
+              className="opacity-0 group-hover:opacity-100 text-text-muted hover:text-error transition-default"
+              title="Çıkış yap"
+            >
+              <LogOut size={14} />
+            </button>
           </div>
-        </Link>
-      )}
+        )}
+      </div>
     </aside>
   )
 }

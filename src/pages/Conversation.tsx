@@ -1,474 +1,244 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Trash2, Send, Image, X } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Avatar } from '@/components/ui/Avatar'
-import { Skeleton } from '@/components/ui/Skeleton'
-import { Button } from '@/components/ui/Button'
-import {
-  useDirectMessages,
-  useSendDM,
-  useDeleteDM,
-  useMarkAsRead,
-  useRealtimeDM,
-  type DirectMessageWithProfile,
-} from '@/hooks/useMessages'
-import { useConversations } from '@/hooks/useMessages'
-import { useAuthStore } from '@/store/authStore'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, Send } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { timeAgo } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
-import { timeAgo, formatDateTime, cn } from '@/lib/utils'
-import type { ConversationWithDetails } from '@/hooks/useMessages'
+import { useAuthStore } from '@/store/authStore'
+import { toast } from '@/store/uiStore'
+import type { DirectMessage } from '@/types/database'
+import Avatar from '@/components/ui/Avatar'
+import { VerifiedIcon } from '@/components/ui/Badge'
 
-export const Conversation = () => {
-  const { id: conversationId } = useParams<{ id: string }>()
+type OtherUser = {
+  id: string
+  username: string
+  display_name: string
+  avatar_url: string | null
+  is_verified: boolean
+  is_nova_plus: boolean
+}
+
+export default function Conversation() {
+  const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const currentUser = useAuthStore((s) => s.user)
-
-  const { data: conversations } = useConversations()
-  const conversation = conversations?.find((c) => c.id === conversationId)
-  const otherUser = conversation?.other_user
-
-  const {
-    data,
-    isLoading,
-    hasNextPage,
-    fetchNextPage,
-    isFetchingNextPage,
-  } = useDirectMessages(conversationId ?? '')
-
-  const { mutate: sendDM, isPending: sending } = useSendDM(conversationId ?? '')
-  const { mutate: deleteDM } = useDeleteDM(conversationId ?? '')
-  const { mutate: markAsRead } = useMarkAsRead(conversationId ?? '')
-
-  const messages = useMemo(
-    () => data?.pages.flatMap((p) => p.messages) ?? [],
-    [data]
-  )
-
-  const [content, setContent] = useState('')
-  const [mediaFiles, setMediaFiles] = useState<File[]>([])
-  const [mediaPreviews, setMediaPreviews] = useState<string[]>([])
-  const [isUploading, setIsUploading] = useState(false)
-
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const { user } = useAuthStore()
+  const queryClient = useQueryClient()
+  const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [messageText, setMessageText] = useState('')
+  const [sending, setSending] = useState(false)
 
-  // Sayfaya girilince okundu işaretle
+  // Fetch other participant
+  const { data: otherUser } = useQuery({
+    queryKey: ['conv-partner', id, user?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('conversation_participants')
+        .select('profiles!inner(id, username, display_name, avatar_url, is_verified, is_nova_plus)')
+        .eq('conversation_id', id!)
+        .neq('user_id', user!.id)
+        .limit(1)
+        .maybeSingle()
+      return (data as unknown as { profiles: OtherUser } | null)?.profiles ?? null
+    },
+    enabled: !!id && !!user?.id,
+  })
+
+  // Fetch messages
+  const { data: messages = [] } = useQuery({
+    queryKey: ['messages', id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('direct_messages')
+        .select('*')
+        .eq('conversation_id', id!)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: true })
+      if (error) throw error
+      return (data ?? []) as DirectMessage[]
+    },
+    enabled: !!id,
+  })
+
+  // Realtime subscription
   useEffect(() => {
-    if (conversationId) markAsRead()
-  }, [conversationId])
+    if (!id) return
 
-  // İlk yüklemede en alta scroll
+    const channel = supabase
+      .channel(`conv:${id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'direct_messages', filter: `conversation_id=eq.${id}` },
+        () => {
+          void queryClient.invalidateQueries({ queryKey: ['messages', id] })
+          void queryClient.invalidateQueries({ queryKey: ['conversations', user?.id] })
+          void queryClient.invalidateQueries({ queryKey: ['unread-messages', user?.id] })
+        }
+      )
+      .subscribe()
+
+    return () => { void supabase.removeChannel(channel) }
+  }, [id, user?.id, queryClient])
+
+  // Scroll to bottom on new messages
   useEffect(() => {
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView()
-    }, 100)
-  }, [conversationId])
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages.length])
 
-  // Yeni mesaj gelince scroll
-  const handleNewMessage = useCallback(() => {
-    const container = containerRef.current
-    if (!container) return
-    const isAtBottom =
-      container.scrollHeight - container.scrollTop - container.clientHeight < 100
-    if (isAtBottom) {
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-      }, 50)
-    }
-    markAsRead()
-  }, [markAsRead])
-
-  // Realtime
-  useRealtimeDM(conversationId ?? '', handleNewMessage)
-
-  // Üste scroll → eski mesajlar
-  const handleScroll = useCallback(() => {
-    const container = containerRef.current
-    if (!container) return
-    if (container.scrollTop < 100 && hasNextPage && !isFetchingNextPage) {
-      fetchNextPage()
-    }
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
-
-  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setContent(e.target.value)
-    const ta = e.target
-    ta.style.height = 'auto'
-    ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
-  }
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []).slice(0, 4)
-    setMediaFiles(files)
-    setMediaPreviews(files.map((f) => URL.createObjectURL(f)))
-  }
-
-  const removeMedia = (i: number) => {
-    URL.revokeObjectURL(mediaPreviews[i])
-    setMediaFiles((p) => p.filter((_, idx) => idx !== i))
-    setMediaPreviews((p) => p.filter((_, idx) => idx !== i))
-  }
-
-  const uploadMedia = async (): Promise<string[]> => {
-    return Promise.all(
-      mediaFiles.map(async (file) => {
-        const ext = file.name.split('.').pop() ?? 'jpg'
-        const path = `dm/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-        const { error } = await supabase.storage
-          .from('media')
-          .upload(path, file, { cacheControl: '3600' })
-        if (error) throw error
-        const { data } = supabase.storage.from('media').getPublicUrl(path)
-        return data.publicUrl
-      })
-    )
-  }
+  // Mark messages as read
+  useEffect(() => {
+    if (!id || !user?.id) return
+    void supabase
+      .from('direct_messages')
+      .update({ is_read: true })
+      .eq('conversation_id', id)
+      .eq('is_read', false)
+      .neq('sender_id', user.id)
+  }, [id, user?.id, messages.length])
 
   const handleSend = async () => {
-    if ((!content.trim() && mediaFiles.length === 0) || sending || isUploading)
-      return
+    const text = messageText.trim()
+    if (!text || !user?.id || !id || sending) return
 
-    try {
-      setIsUploading(true)
-      const mediaUrls = await uploadMedia()
-      setIsUploading(false)
+    setSending(true)
+    setMessageText('')
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+    }
 
-      sendDM({ content: content.trim(), mediaUrls })
+    const { error } = await supabase.from('direct_messages').insert({
+      conversation_id: id,
+      sender_id: user.id,
+      content: text,
+    })
 
-      setContent('')
-      setMediaFiles([])
-      setMediaPreviews([])
-      if (textareaRef.current) textareaRef.current.style.height = 'auto'
+    if (error) {
+      toast.error('Mesaj gönderilemedi')
+      setMessageText(text)
+    }
 
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-      }, 100)
-    } catch {
-      setIsUploading(false)
+    setSending(false)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      void handleSend()
     }
   }
 
-  const canSend =
-    (content.trim().length > 0 || mediaFiles.length > 0) &&
-    !sending &&
-    !isUploading
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setMessageText(e.target.value)
+    e.target.style.height = 'auto'
+    e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`
+  }
+
+  // Group consecutive messages by same sender
+  type MessageGroup = { senderId: string; messages: DirectMessage[] }
+  const groups: MessageGroup[] = []
+  for (const msg of messages) {
+    const last = groups[groups.length - 1]
+    if (last && last.senderId === msg.sender_id) {
+      last.messages.push(msg)
+    } else {
+      groups.push({ senderId: msg.sender_id, messages: [msg] })
+    }
+  }
 
   return (
-    <div className="flex flex-col h-screen bg-[var(--bg-base)]">
-      {/* Başlık */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border)] bg-[var(--bg-base)] shrink-0">
+    <div className="flex flex-col h-dvh">
+      {/* Header */}
+      <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 border-b border-line bg-bg-base/80 backdrop-blur-md sticky top-0 z-10">
         <button
-          onClick={() => navigate('/mesajlar')}
-          className="p-1.5 -ml-1.5 rounded-full text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] transition-colors"
+          type="button"
+          onClick={() => navigate(-1)}
+          className="p-2 -ml-2 rounded-full text-text-primary hover:bg-bg-overlay transition-default"
         >
-          <ArrowLeft size={18} />
+          <ArrowLeft size={20} />
         </button>
 
         {otherUser ? (
           <button
+            type="button"
             onClick={() => navigate(`/${otherUser.username}`)}
-            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+            className="flex items-center gap-2.5 flex-1 min-w-0"
           >
-            <Avatar
-              src={otherUser.avatar_url}
-              fallback={otherUser.display_name}
-              size="sm"
-              showOnline
-            />
-            <div className="text-left">
-              <p className="text-sm font-semibold text-[var(--text-primary)] leading-tight">
-                {otherUser.display_name}
-              </p>
-              <p className="text-xs text-[var(--text-muted)]">
-                @{otherUser.username}
-              </p>
+            <Avatar src={otherUser.avatar_url} fallback={otherUser.display_name} size="sm" isNova={otherUser.is_nova_plus} />
+            <div className="min-w-0">
+              <div className="flex items-center gap-1">
+                <span className="font-semibold text-text-primary text-sm truncate">{otherUser.display_name}</span>
+                {otherUser.is_verified && <VerifiedIcon size={13} />}
+              </div>
+              <p className="text-text-muted text-xs">@{otherUser.username}</p>
             </div>
           </button>
         ) : (
-          <div className="flex items-center gap-2">
-            <Skeleton className="w-8 h-8" rounded="full" />
-            <Skeleton className="w-24 h-4" />
-          </div>
+          <div className="flex-1" />
         )}
       </div>
 
-      {/* Mesajlar */}
-      <div
-        ref={containerRef}
-        className="flex-1 overflow-y-auto px-4 py-4 space-y-1"
-        onScroll={handleScroll}
-      >
-        {/* Eski mesaj yükleyici */}
-        {isFetchingNextPage && (
-          <div className="flex justify-center py-2">
-            <div className="w-4 h-4 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
+        {messages.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <p className="text-text-muted text-sm">Konuşmayı başlatmak için bir mesaj gönder.</p>
           </div>
         )}
 
-        {isLoading ? (
-          <DMSkeleton />
-        ) : messages.length === 0 ? (
-          <EmptyDM name={otherUser?.display_name ?? ''} />
-        ) : (
-          <>
-            {messages.map((msg, i) => {
-              const prev = messages[i - 1]
-              const isOwn = msg.sender_id === currentUser?.id
-              const isGrouped =
-                prev &&
-                prev.sender_id === msg.sender_id &&
-                new Date(msg.created_at).getTime() -
-                  new Date(prev.created_at).getTime() <
-                  5 * 60 * 1000
-
-              // Tarih ayırıcı
-              const showDate =
-                !prev ||
-                new Date(msg.created_at).toDateString() !==
-                  new Date(prev.created_at).toDateString()
-
-              return (
-                <div key={msg.id}>
-                  {showDate && (
-                    <div className="flex items-center gap-3 my-4">
-                      <div className="flex-1 h-px bg-[var(--border)]" />
-                      <span className="text-xs text-[var(--text-muted)] shrink-0">
-                        {formatDateTime(msg.created_at).split(',')[0]}
-                      </span>
-                      <div className="flex-1 h-px bg-[var(--border)]" />
-                    </div>
+        {groups.map((group, gi) => {
+          const isOwn = group.senderId === user?.id
+          return (
+            <div key={gi} className={cn('flex flex-col gap-0.5', isOwn ? 'items-end' : 'items-start')}>
+              {group.messages.map((msg, mi) => (
+                <div key={msg.id} className={cn('max-w-[75%]', isOwn ? 'items-end' : 'items-start')}>
+                  <div
+                    className={cn(
+                      'px-3.5 py-2 rounded-2xl text-sm leading-relaxed break-words',
+                      isOwn
+                        ? 'bg-accent text-bg-base rounded-br-sm'
+                        : 'bg-bg-elevated text-text-primary rounded-bl-sm',
+                      group.messages.length > 1 && mi < group.messages.length - 1 && isOwn && 'rounded-br-2xl',
+                      group.messages.length > 1 && mi < group.messages.length - 1 && !isOwn && 'rounded-bl-2xl'
+                    )}
+                  >
+                    {msg.content}
+                  </div>
+                  {mi === group.messages.length - 1 && (
+                    <p className="text-text-muted text-[10px] mt-0.5 px-1">{timeAgo(msg.created_at)}</p>
                   )}
-                  <DMMessage
-                    message={msg}
-                    isOwn={isOwn}
-                    isGrouped={!!isGrouped}
-                    onDelete={() => deleteDM(msg.id)}
-                  />
                 </div>
-              )
-            })}
-          </>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Medya önizleme */}
-      {mediaPreviews.length > 0 && (
-        <div className="px-4 py-2 flex gap-2 border-t border-[var(--border-subtle)]">
-          {mediaPreviews.map((preview, i) => (
-            <div
-              key={i}
-              className="relative w-14 h-14 rounded-[var(--radius-md)] overflow-hidden bg-[var(--bg-elevated)]"
-            >
-              <img
-                src={preview}
-                alt={`Önizleme ${i + 1}`}
-                className="w-full h-full object-cover"
-              />
-              <button
-                onClick={() => removeMedia(i)}
-                className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-black"
-              >
-                <X size={10} />
-              </button>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          )
+        })}
+
+        <div ref={bottomRef} />
+      </div>
 
       {/* Input */}
-      <div className="px-4 py-3 border-t border-[var(--border)] shrink-0">
+      <div className="flex-shrink-0 border-t border-line px-4 py-3 bg-bg-base">
         <div className="flex items-end gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={handleFileSelect}
+          <textarea
+            ref={textareaRef}
+            value={messageText}
+            onChange={handleTextareaChange}
+            onKeyDown={handleKeyDown}
+            placeholder="Mesaj yaz..."
+            rows={1}
+            className="flex-1 bg-bg-surface border border-line rounded-2xl px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none resize-none leading-relaxed"
           />
-
           <button
-            onClick={() => fileInputRef.current?.click()}
-            className="p-2 text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors shrink-0"
+            type="button"
+            onClick={() => void handleSend()}
+            disabled={!messageText.trim() || sending}
+            className="w-10 h-10 rounded-full bg-accent text-bg-base flex items-center justify-center flex-shrink-0 disabled:opacity-40 hover:opacity-80 transition-default"
           >
-            <Image size={20} />
-          </button>
-
-          <div className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-[var(--radius-xl)] px-4 py-2.5 focus-within:border-[var(--accent)] transition-colors">
-            <textarea
-              ref={textareaRef}
-              value={content}
-              onChange={handleContentChange}
-              onKeyDown={handleKeyDown}
-              placeholder="Mesaj yaz..."
-              rows={1}
-              className="w-full bg-transparent text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] resize-none outline-none leading-relaxed min-h-[20px] max-h-[120px]"
-            />
-          </div>
-
-          <button
-            onClick={handleSend}
-            disabled={!canSend}
-            className={cn(
-              'shrink-0 w-10 h-10 rounded-full flex items-center justify-center',
-              'transition-all duration-[var(--transition)]',
-              canSend
-                ? 'bg-[var(--accent)] text-[var(--text-inverse)] hover:bg-[var(--accent-hover)]'
-                : 'bg-[var(--bg-elevated)] text-[var(--text-muted)] cursor-not-allowed'
-            )}
-          >
-            {isUploading || sending ? (
-              <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <Send size={17} />
-            )}
+            <Send size={16} />
           </button>
         </div>
       </div>
     </div>
   )
 }
-
-// ── DM Mesaj Baloncuğu ────────────────────────────────────
-interface DMMessageProps {
-  message: DirectMessageWithProfile
-  isOwn: boolean
-  isGrouped: boolean
-  onDelete: () => void
-}
-
-const DMMessage = ({
-  message,
-  isOwn,
-  isGrouped,
-  onDelete,
-}: DMMessageProps) => {
-  const [hovered, setHovered] = useState(false)
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.15 }}
-      className={cn(
-        'flex items-end gap-2 group',
-        isOwn ? 'flex-row-reverse' : 'flex-row',
-        isGrouped ? 'mt-0.5' : 'mt-3'
-      )}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      {/* Avatar (sadece ilk mesajda ve karşı taraf için) */}
-      {!isOwn && (
-        <div className="w-8 shrink-0">
-          {!isGrouped && (
-            <Avatar
-              src={message.profiles.avatar_url}
-              fallback={message.profiles.display_name}
-              size="sm"
-            />
-          )}
-        </div>
-      )}
-
-      <div
-        className={cn(
-          'flex flex-col max-w-[70%]',
-          isOwn ? 'items-end' : 'items-start'
-        )}
-      >
-        {/* Metin baloncuğu */}
-        {message.content && (
-          <div
-            className={cn(
-              'px-3 py-2 rounded-[var(--radius-xl)] text-sm leading-relaxed',
-              'break-words whitespace-pre-wrap',
-              isOwn
-                ? 'bg-[var(--accent)] text-[var(--text-inverse)] rounded-br-[var(--radius-sm)]'
-                : 'bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text-primary)] rounded-bl-[var(--radius-sm)]'
-            )}
-          >
-            {message.content}
-          </div>
-        )}
-
-        {/* Medya */}
-        {message.media_urls.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-1">
-            {message.media_urls.map((url, i) => (
-              <img
-                key={i}
-                src={url}
-                alt={`Medya ${i + 1}`}
-                className="max-w-[200px] max-h-[150px] rounded-[var(--radius-lg)] object-cover"
-                loading="lazy"
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Zaman */}
-        {hovered && (
-          <span className="text-[10px] text-[var(--text-muted)] mt-0.5 px-1">
-            {timeAgo(message.created_at)}
-          </span>
-        )}
-      </div>
-
-      {/* Sil butonu */}
-      {isOwn && hovered && (
-        <button
-          onClick={onDelete}
-          className="p-1 text-[var(--text-muted)] hover:text-[var(--error)] transition-colors opacity-0 group-hover:opacity-100"
-        >
-          <Trash2 size={13} />
-        </button>
-      )}
-    </motion.div>
-  )
-}
-
-// ── Skeleton & Empty ──────────────────────────────────────
-const DMSkeleton = () => (
-  <div className="space-y-4">
-    {Array.from({ length: 6 }).map((_, i) => (
-      <div
-        key={i}
-        className={cn(
-          'flex items-end gap-2',
-          i % 3 === 0 ? 'flex-row-reverse' : 'flex-row'
-        )}
-      >
-        {i % 3 !== 0 && <Skeleton className="w-8 h-8 shrink-0" rounded="full" />}
-        <Skeleton
-          className={cn('h-9 rounded-[var(--radius-xl)]', i % 3 === 0 ? 'w-32' : 'w-44')}
-        />
-      </div>
-    ))}
-  </div>
-)
-
-const EmptyDM = ({ name }: { name: string }) => (
-  <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
-    <span className="text-4xl">👋</span>
-    <div>
-      <p className="text-sm font-medium text-[var(--text-primary)]">
-        {name} ile konuşman başlıyor
-      </p>
-      <p className="text-xs text-[var(--text-muted)] mt-1">
-        İlk mesajı sen gönder!
-      </p>
-    </div>
-  </div>
-)

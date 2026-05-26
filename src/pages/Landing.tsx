@@ -1,118 +1,187 @@
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowRight, Zap, Shield, Users } from 'lucide-react'
-import { Button } from '@/components/ui/Button'
 
-const fadeUp = {
-  initial: { opacity: 0, y: 24 },
-  animate: { opacity: 1, y: 0 },
-}
+const features = [
+  { icon: Zap,    text: 'Algoritma yok — sıralama sana ait' },
+  { icon: Shield, text: 'Reklam yok — dikkatini satmıyoruz' },
+  { icon: Users,  text: 'Gerçek bağlantılar — filtre kabarcığı yok' },
+]
 
-export const Landing = () => {
+export default function Landing() {
   return (
-    <div className="min-h-screen bg-[var(--bg-base)]">
-      {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
-        <span className="font-display text-2xl text-[var(--accent)] italic">
-          Orbit 🪐
-        </span>
+    <div className="min-h-dvh bg-bg-base flex flex-col">
+      {/* Nav */}
+      <header className="flex items-center justify-between px-6 py-4 max-w-6xl mx-auto w-full">
+        <span className="font-display text-2xl text-text-primary">Orbit</span>
         <div className="flex items-center gap-3">
-          <Link to="/giris">
-            <Button variant="ghost" size="sm">Giriş Yap</Button>
+          <Link
+            to="/giris"
+            className="text-text-secondary hover:text-text-primary transition-default text-sm font-medium"
+          >
+            Giriş Yap
           </Link>
-          <Link to="/kayit">
-            <Button variant="primary" size="sm">Kayıt Ol</Button>
+          <Link
+            to="/kayit"
+            className="bg-accent hover:bg-accent-hover text-text-inverse text-sm font-semibold px-4 py-2 rounded-full transition-default"
+          >
+            Kayıt Ol
           </Link>
         </div>
       </header>
 
       {/* Hero */}
-      <section className="max-w-5xl mx-auto px-6 py-24 text-center">
-        <motion.div
-          variants={fadeUp}
-          initial="initial"
-          animate="animate"
-          transition={{ duration: 0.5 }}
-        >
-          <h1 className="font-display text-5xl md:text-7xl text-[var(--text-primary)] leading-tight mb-6">
-            Algoritma yok.{' '}
-            <span className="text-[var(--accent)] italic">Reklam yok.</span>
-            <br />
-            Sadece sen.
-          </h1>
-          <p className="text-lg text-[var(--text-secondary)] max-w-xl mx-auto mb-10 leading-relaxed">
-            Orbit, gerçek bağlantılar kurabileceğin, içeriğin üzerinde tam
-            kontrol sahibi olduğun yeni nesil sosyal medya platformu.
-          </p>
-          <div className="flex items-center justify-center gap-4 flex-wrap">
-            <Link to="/kayit">
-              <Button size="lg" rightIcon={<ArrowRight size={18} />}>
-                Yörüngeye Gir
-              </Button>
-            </Link>
-            <Link to="/giris">
-              <Button variant="outline" size="lg">
-                Giriş Yap
-              </Button>
-            </Link>
-          </div>
-        </motion.div>
+      <main className="flex-1 flex items-center justify-center px-6 py-16">
+        <div className="max-w-6xl mx-auto w-full grid lg:grid-cols-2 gap-16 items-center">
 
-        {/* Özellikler */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3, duration: 0.5 }}
-          className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-24"
-        >
-          {[
-            {
-              icon: Zap,
-              title: 'Kronolojik Feed',
-              desc: 'Takip ettiğin kişilerin içeriklerini, sıra sende olmak üzere gör. Algoritma seninle ilgilenemez.',
-            },
-            {
-              icon: Shield,
-              title: 'Gizlilik Önce',
-              desc: 'Özel hesap, engelleme, susturma. Kim ne göreceğine sen karar verirsin.',
-            },
-            {
-              icon: Users,
-              title: 'Gerçek Topluluk',
-              desc: 'Discord benzeri sunucular, hikayeler, reels. Her şey tek bir yerde.',
-            },
-          ].map((feature, i) => {
-            const Icon = feature.icon
-            return (
-              <motion.div
-                key={i}
-                variants={fadeUp}
-                initial="initial"
-                animate="animate"
-                transition={{ delay: 0.4 + i * 0.1 }}
-                className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-[var(--radius-xl)] p-6 text-left"
+          {/* Sol — metin */}
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: 'easeOut' }}
+            className="space-y-8"
+          >
+            <div className="space-y-4">
+              <div className="inline-flex items-center gap-2 bg-accent-muted border border-accent-border rounded-full px-3 py-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+                <span className="text-accent text-xs font-medium">Şu an beta'da</span>
+              </div>
+
+              <h1 className="font-display text-5xl lg:text-6xl text-text-primary leading-tight">
+                Sosyal medya,
+                <br />
+                <span className="text-accent">senin gibi</span>
+                <br />
+                düşünülmüş.
+              </h1>
+
+              <p className="text-text-secondary text-lg leading-relaxed max-w-md">
+                Algoritma yok. Reklam yok. Sadece sen, ve gerçekten takip etmek
+                istediğin insanlar.
+              </p>
+            </div>
+
+            {/* Özellikler */}
+            <ul className="space-y-3">
+              {features.map(({ icon: Icon, text }) => (
+                <li key={text} className="flex items-center gap-3 text-text-secondary">
+                  <span className="w-8 h-8 rounded-md bg-accent-muted border border-accent-border flex items-center justify-center flex-shrink-0">
+                    <Icon size={15} className="text-accent" />
+                  </span>
+                  <span className="text-sm">{text}</span>
+                </li>
+              ))}
+            </ul>
+
+            {/* CTA */}
+            <div className="flex items-center gap-4">
+              <Link
+                to="/kayit"
+                className="inline-flex items-center gap-2 bg-accent hover:bg-accent-hover text-text-inverse font-semibold px-6 py-3 rounded-full transition-default"
               >
-                <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--accent-muted)] border border-[var(--accent-border)] flex items-center justify-center mb-4">
-                  <Icon size={20} className="text-[var(--accent)]" />
-                </div>
-                <h3 className="text-base font-semibold text-[var(--text-primary)] mb-2">
-                  {feature.title}
-                </h3>
-                <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-                  {feature.desc}
-                </p>
-              </motion.div>
-            )
-          })}
-        </motion.div>
-      </section>
+                Ücretsiz Başla
+                <ArrowRight size={16} />
+              </Link>
+              <Link
+                to="/giris"
+                className="text-text-secondary hover:text-text-primary text-sm transition-default"
+              >
+                Zaten hesabım var
+              </Link>
+            </div>
+          </motion.div>
+
+          {/* Sağ — uygulama mockup */}
+          <motion.div
+            initial={{ opacity: 0, y: 32 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: 'easeOut', delay: 0.1 }}
+            className="hidden lg:block"
+          >
+            <AppMockup />
+          </motion.div>
+        </div>
+      </main>
 
       {/* Footer */}
-      <footer className="border-t border-[var(--border)] py-8 text-center">
-        <p className="text-sm text-[var(--text-muted)]">
-          © 2024 Orbit. Türkiye'den 🇹🇷 sevgiyle yapıldı.
+      <footer className="border-t border-line py-6 px-6">
+        <p className="text-text-muted text-sm text-center">
+          © 2025 Orbit. Tüm hakları saklıdır.
         </p>
       </footer>
+    </div>
+  )
+}
+
+function AppMockup() {
+  return (
+    <div className="relative">
+      {/* Arka plan efekti */}
+      <div className="absolute inset-0 bg-accent-muted rounded-3xl blur-3xl scale-90" />
+
+      {/* Kart */}
+      <div className="relative card p-4 space-y-4 rounded-xl max-w-sm mx-auto">
+        {/* Post 1 */}
+        <MockPost
+          name="Zeynep K."
+          username="zeynep"
+          content="Sonunda algoritma olmadan çalışan bir sosyal medya uygulaması! Takip ettiklerimi gerçekten görüyorum 🎉"
+          likes={142}
+          replies={23}
+        />
+        <div className="border-t border-line" />
+        {/* Post 2 */}
+        <MockPost
+          name="Mert A."
+          username="mert_dev"
+          content="Orbit'te bir haftadır hiç reklam görmüyorum. Dikkatim gerçekten içeriğe gidiyor artık."
+          likes={89}
+          replies={11}
+        />
+        <div className="border-t border-line" />
+        {/* Post 3 */}
+        <MockPost
+          name="Selin Y."
+          username="selin"
+          content="Nova+ rozeti aldım, profil özelleştirmesi gerçekten çok güzel ✨"
+          likes={56}
+          replies={7}
+          isNova
+        />
+      </div>
+    </div>
+  )
+}
+
+type MockPostProps = {
+  name: string
+  username: string
+  content: string
+  likes: number
+  replies: number
+  isNova?: boolean
+}
+
+function MockPost({ name, username, content, likes, replies, isNova }: MockPostProps) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <div className="w-8 h-8 rounded-full bg-bg-elevated border border-line flex items-center justify-center text-xs text-text-secondary font-medium flex-shrink-0">
+          {name[0]}
+        </div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-1">
+            <span className="text-text-primary text-sm font-medium truncate">{name}</span>
+            {isNova && <span className="text-accent text-xs">⭐</span>}
+          </div>
+          <span className="text-text-muted text-xs">@{username}</span>
+        </div>
+      </div>
+      <p className="text-text-secondary text-sm leading-relaxed pl-10">{content}</p>
+      <div className="flex items-center gap-4 pl-10">
+        <span className="text-text-muted text-xs">❤️ {likes}</span>
+        <span className="text-text-muted text-xs">💬 {replies}</span>
+      </div>
     </div>
   )
 }

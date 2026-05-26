@@ -1,13 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
-import type { Database } from './database.types'
+import type { Database } from '@/types/database'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    'Supabase yapılandırması eksik. .env dosyasını kontrol edin.'
-  )
+  throw new Error('Supabase ortam değişkenleri eksik. .env dosyasını kontrol et.')
 }
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
@@ -23,46 +21,18 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   },
 })
 
-// Auth helpers
-export const signInWithGoogle = async () => {
-  const { error } = await supabase.auth.signInWithOAuth({
+// ── Auth yardımcıları ────────────────────────────────
+
+export const signInWithGoogle = () =>
+  supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: `${import.meta.env.VITE_APP_URL}/ana-sayfa`,
+      redirectTo: `${window.location.origin}/ana-sayfa`,
     },
   })
-  if (error) throw error
-}
 
-export const signInWithEmail = async (email: string, password: string) => {
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  })
-  if (error) throw error
-  return data
-}
+export const signOut = () => supabase.auth.signOut()
 
-export const signUpWithEmail = async (email: string, password: string) => {
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      emailRedirectTo: `${import.meta.env.VITE_APP_URL}/ana-sayfa`,
-    },
-  })
-  if (error) throw error
-  return data
-}
+export const getCurrentUser = () => supabase.auth.getUser()
 
-export const signOut = async () => {
-  const { error } = await supabase.auth.signOut()
-  if (error) throw error
-}
-
-export const resetPassword = async (email: string) => {
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${import.meta.env.VITE_APP_URL}/sifremi-sifirla`,
-  })
-  if (error) throw error
-}
+export const getCurrentSession = () => supabase.auth.getSession()

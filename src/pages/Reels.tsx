@@ -1,229 +1,173 @@
-import { useState, useMemo, useRef, useCallback } from 'react'
-import { useVirtualizer } from '@tanstack/react-virtual'
-import { Plus, ArrowLeft } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { ReelCard } from '@/components/reel/ReelCard'
-import { ReelComposer } from '@/components/reel/ReelComposer'
-import { Skeleton } from '@/components/ui/Skeleton'
-import { useReelFeed } from '@/hooks/useReels'
-import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { ArrowLeft, Plus } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { useAuthStore } from '@/store/authStore'
+import type { ReelWithAuthor } from '@/types/database'
+import ReelPlayer from '@/components/reels/ReelPlayer'
+import { ReelSkeleton } from '@/components/ui/Skeleton'
 
-export const Reels = () => {
-  const navigate = useNavigate()
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [activeIndex, setActiveIndex] = useState(0)
-  const [composerOpen, setComposerOpen] = useState(false)
+const PAGE_SIZE = 5
 
-  const {
-    data,
-    isLoading,
-    isError,
-    hasNextPage,
-    isFetchingNextPage,
-    fetchNextPage,
-  } = useReelFeed()
-
-  const reels = useMemo(
-    () => data?.pages.flatMap((p) => p.reels) ?? [],
-    [data]
-  )
-
-  const { sentinelRef } = useInfiniteScroll({
-    hasNextPage: !!hasNextPage,
-    isFetchingNextPage,
-    fetchNextPage,
-    threshold: 200,
-  })
-
-  // TanStack Virtual — dikey snap scroll
-  const virtualizer = useVirtualizer({
-    count: reels.length,
-    getScrollElement: () => containerRef.current,
-    estimateSize: () => {
-      // Tam ekran yüksekliği
-      return containerRef.current?.clientHeight ?? window.innerHeight
-    },
-    overscan: 2,
-  })
-
-  // Scroll ile aktif index güncelle
-  const handleScroll = useCallback(() => {
-    const container = containerRef.current
-    if (!container) return
-
-    const scrollTop = container.scrollTop
-    const itemHeight = container.clientHeight
-    const newIndex = Math.round(scrollTop / itemHeight)
-
-    if (newIndex !== activeIndex) {
-      setActiveIndex(newIndex)
-    }
-  }, [activeIndex])
-
-  if (isLoading) return <ReelsSkeleton />
-
-  if (isError || reels.length === 0) {
-    return <ReelsEmpty onCompose={() => setComposerOpen(true)} />
-  }
-
-  return (
-    <div className="relative h-screen bg-black overflow-hidden">
-      {/* Üst bar */}
-      <div className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-4 pt-4 pb-2">
-        <button
-          onClick={() => navigate(-1)}
-          className="p-2 rounded-full bg-black/30 text-white hover:bg-black/50 transition-colors"
-        >
-          <ArrowLeft size={20} />
-        </button>
-
-        <h1 className="text-white font-semibold text-sm">Reels</h1>
-
-        <button
-          onClick={() => setComposerOpen(true)}
-          className="p-2 rounded-full bg-black/30 text-white hover:bg-black/50 transition-colors"
-        >
-          <Plus size={20} />
-        </button>
-      </div>
-
-      {/* Snap scroll container */}
-      <div
-        ref={containerRef}
-        className="h-full overflow-y-scroll snap-y snap-mandatory scrollbar-none"
-        onScroll={handleScroll}
-        style={{ scrollSnapType: 'y mandatory' }}
-      >
-        <div
-          style={{
-            height: `${virtualizer.getTotalSize()}px`,
-            position: 'relative',
-          }}
-        >
-          {virtualizer.getVirtualItems().map((virtualItem) => {
-            const reel = reels[virtualItem.index]
-            if (!reel) return null
-
-            return (
-              <div
-                key={virtualItem.key}
-                data-index={virtualItem.index}
-                ref={virtualizer.measureElement}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: `${virtualItem.size}px`,
-                  transform: `translateY(${virtualItem.start}px)`,
-                  scrollSnapAlign: 'start',
-                }}
-              >
-                <ReelCard
-                  reel={reel}
-                  isActive={virtualItem.index === activeIndex}
-                />
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Infinite scroll sentinel */}
-        <div ref={sentinelRef} className="h-4" />
-      </div>
-
-      {/* Yükleniyor (alt) */}
-      <AnimatePresence>
-        {isFetchingNextPage && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute bottom-8 left-0 right-0 flex justify-center z-20"
-          >
-            <div className="bg-black/60 rounded-full px-4 py-2">
-              <div className="flex gap-1.5">
-                {[0, 1, 2].map((i) => (
-                  <motion.div
-                    key={i}
-                    className="w-1.5 h-1.5 rounded-full bg-white"
-                    animate={{ opacity: [0.3, 1, 0.3] }}
-                    transition={{
-                      duration: 0.8,
-                      repeat: Infinity,
-                      delay: i * 0.15,
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Reel yükle modal */}
-      <ReelComposer
-        isOpen={composerOpen}
-        onClose={() => setComposerOpen(false)}
-      />
-    </div>
-  )
+type ReelInteractions = {
+  likedIds: Set<string>
+  bookmarkedIds: Set<string>
 }
 
-// ── Skeleton ──────────────────────────────────────────────
-const ReelsSkeleton = () => (
-  <div className="h-screen bg-black relative">
-    <Skeleton className="absolute inset-0" rounded="sm" />
-    <div className="absolute right-3 bottom-24 flex flex-col gap-5">
-      {[1, 2, 3, 4].map((i) => (
-        <div key={i} className="flex flex-col items-center gap-1">
-          <Skeleton className="w-10 h-10" rounded="full" />
-          <Skeleton className="w-8 h-3" />
-        </div>
-      ))}
-    </div>
-    <div className="absolute bottom-4 left-4 space-y-2">
-      <Skeleton className="w-24 h-4" />
-      <Skeleton className="w-48 h-3" />
-      <Skeleton className="w-32 h-3" />
-    </div>
-  </div>
-)
-
-// ── Boş durum ─────────────────────────────────────────────
-const ReelsEmpty = ({
-  onCompose,
-}: {
-  onCompose: () => void
-}) => {
+export default function Reels() {
+  const { user } = useAuthStore()
   const navigate = useNavigate()
+  const [muted, setMuted] = useState(true)
+  const [activeIndex, setActiveIndex] = useState(0)
+  const loadMoreRef = useRef<HTMLDivElement>(null)
+  const reelRefs = useRef<Map<number, Element>>(new Map())
+
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteQuery({
+    queryKey: ['reels'],
+    queryFn: async ({ pageParam }) => {
+      const { data, error } = await supabase
+        .from('reels')
+        .select('*, profiles!inner(id, username, display_name, avatar_url, is_verified, is_nova_plus)')
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .range(pageParam as number, (pageParam as number) + PAGE_SIZE - 1)
+      if (error) throw error
+      return (data ?? []) as unknown as ReelWithAuthor[]
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      if (lastPage.length < PAGE_SIZE) return undefined
+      return allPages.reduce((sum, p) => sum + p.length, 0)
+    },
+    enabled: !!user?.id,
+    staleTime: 1000 * 60,
+  })
+
+  const { data: interactions } = useQuery({
+    queryKey: ['reel-interactions', user?.id],
+    queryFn: async (): Promise<ReelInteractions> => {
+      const [{ data: likes }, { data: bookmarks }] = await Promise.all([
+        supabase.from('likes').select('target_id').eq('user_id', user!.id).eq('target_type', 'reel'),
+        supabase.from('bookmarks').select('target_id').eq('user_id', user!.id).eq('target_type', 'reel'),
+      ])
+      return {
+        likedIds:     new Set(likes?.map((l) => l.target_id) ?? []),
+        bookmarkedIds: new Set(bookmarks?.map((b) => b.target_id) ?? []),
+      }
+    },
+    enabled: !!user?.id,
+    staleTime: 1000 * 60,
+  })
+
+  // Load more when sentinel enters view
+  useEffect(() => {
+    const el = loadMoreRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          void fetchNextPage()
+        }
+      },
+      { threshold: 0.1 }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage])
+
+  // Track which reel is active via IntersectionObserver
+  useEffect(() => {
+    const observers: IntersectionObserver[] = []
+
+    reelRefs.current.forEach((el, index) => {
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          if (entry?.isIntersecting) {
+            setActiveIndex(index)
+          }
+        },
+        { threshold: 0.6 }
+      )
+      observer.observe(el)
+      observers.push(observer)
+    })
+
+    return () => {
+      observers.forEach((obs) => obs.disconnect())
+    }
+  }, [data])
+
+  const reels = data?.pages.flat() ?? []
 
   return (
-    <div className="h-screen bg-black flex flex-col items-center justify-center gap-6 p-6 text-center">
-      <span className="text-6xl">🎬</span>
-      <div>
-        <h2 className="text-white text-xl font-semibold mb-2">
-          Henüz reel yok
-        </h2>
-        <p className="text-white/60 text-sm max-w-xs">
-          Takip ettiğin kişilerin reelleri burada görünecek.
-          İlk reeli sen paylaş!
-        </p>
-      </div>
-      <div className="flex flex-col gap-3 w-full max-w-xs">
-        <button
-          onClick={onCompose}
-          className="w-full py-3 rounded-[var(--radius-full)] bg-[var(--accent)] text-[var(--text-inverse)] font-semibold text-sm hover:bg-[var(--accent-hover)] transition-colors"
-        >
-          Reel Paylaş
-        </button>
-        <button
-          onClick={() => navigate('/ana-sayfa')}
-          className="w-full py-3 rounded-[var(--radius-full)] border border-white/20 text-white font-medium text-sm hover:bg-white/10 transition-colors"
-        >
-          Ana Sayfaya Dön
-        </button>
+    // Full-screen container without AppLayout
+    <div className="fixed inset-0 bg-black z-40">
+      {/* Back button */}
+      <button
+        type="button"
+        onClick={() => navigate(-1)}
+        className="absolute top-4 left-4 z-50 w-9 h-9 rounded-full bg-black/40 flex items-center justify-center text-white hover:bg-black/60 transition-default"
+      >
+        <ArrowLeft size={18} />
+      </button>
+
+      {/* Upload button */}
+      <Link
+        to="/reels/olustur"
+        className="absolute top-4 right-4 z-50 w-9 h-9 rounded-full bg-black/40 flex items-center justify-center text-white hover:bg-black/60 transition-default"
+      >
+        <Plus size={18} />
+      </Link>
+
+      {/* Scroll container with snap */}
+      <div className="h-full overflow-y-scroll snap-y snap-mandatory scrollbar-hide">
+        {isLoading ? (
+          <div className="h-dvh flex items-center justify-center">
+            <ReelSkeleton />
+          </div>
+        ) : reels.length === 0 ? (
+          <div className="h-dvh flex flex-col items-center justify-center text-center px-8">
+            <p className="text-white/60 text-lg mb-2">Henüz Reel yok</p>
+            <p className="text-white/40 text-sm">İlk Reel'i paylaşan sen ol!</p>
+          </div>
+        ) : (
+          <>
+            {reels.map((reel, i) => (
+              <div
+                key={reel.id}
+                data-index={i}
+                ref={(el) => {
+                  if (el) {
+                    reelRefs.current.set(i, el)
+                  } else {
+                    reelRefs.current.delete(i)
+                  }
+                }}
+                className="h-dvh snap-start flex-shrink-0"
+              >
+                <ReelPlayer
+                  reel={reel}
+                  isLiked={interactions?.likedIds.has(reel.id) ?? false}
+                  isBookmarked={interactions?.bookmarkedIds.has(reel.id) ?? false}
+                  isMuted={muted}
+                  isActive={i === activeIndex}
+                  onMuteToggle={() => setMuted((m) => !m)}
+                />
+              </div>
+            ))}
+
+            {/* Load more trigger + spinner */}
+            <div ref={loadMoreRef} className="h-dvh snap-start flex items-center justify-center bg-black">
+              {isFetchingNextPage && (
+                <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              )}
+              {!hasNextPage && reels.length > 0 && (
+                <p className="text-white/40 text-sm">Tüm Reels yüklendi</p>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   )

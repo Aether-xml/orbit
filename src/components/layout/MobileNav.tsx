@@ -1,68 +1,70 @@
-import { Link, useLocation } from 'react-router-dom'
-import {
-  Home,
-  Compass,
-  Clapperboard,
-  Globe,
-  Bell,
-} from 'lucide-react'
+import { NavLink } from 'react-router-dom'
+import { Home, Search, Bell, Globe, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useNotificationStore } from '@/store/notificationStore'
+import { useAuthStore } from '@/store/authStore'
+import { useUnreadCounts } from '@/hooks/useUnreadCounts'
 
 const navItems = [
-  { path: '/ana-sayfa', label: 'Ana Sayfa', icon: Home },
-  { path: '/kesif', label: 'Keşfet', icon: Compass },
-  { path: '/reels', label: 'Reels', icon: Clapperboard },
-  { path: '/sunucular', label: 'Sunucular', icon: Globe },
-  { path: '/bildirimler', label: 'Bildirimler', icon: Bell },
+  { to: '/ana-sayfa',   icon: Home,          label: 'Ana Sayfa'   },
+  { to: '/kesif',       icon: Search,        label: 'Keşfet'      },
+  { to: '/sunucular',   icon: Globe,         label: 'Sunucular'   },
+  { to: '/bildirimler', icon: Bell,          label: 'Bildirimler' },
 ]
 
-export const MobileNav = () => {
-  const location = useLocation()
-  const unreadCount = useNotificationStore((s) => s.unreadCount)
+export default function MobileNav() {
+  const { profile } = useAuthStore()
+  const { unreadNotifications } = useUnreadCounts()
 
   return (
-    <nav
-      className={cn(
-        'fixed bottom-0 left-0 right-0 z-40',
-        'bg-[var(--bg-base)] border-t border-[var(--border)]',
-        'safe-bottom',
-        'flex items-center'
-      )}
-    >
-      {navItems.map((item) => {
-        const Icon = item.icon
-        const isActive = location.pathname === item.path
-        const badge =
-          item.path === '/bildirimler' && unreadCount > 0 ? unreadCount : undefined
+    <nav className="fixed bottom-0 left-0 right-0 z-30 bg-bg-base border-t border-line pb-safe">
+      <div className="flex items-center justify-around px-2 py-2">
+        {navItems.map(({ to, icon: Icon, label }) => {
+          const hasBadge = to === '/bildirimler' && unreadNotifications > 0
+          return (
+            <NavLink
+              key={to}
+              to={to}
+              className={({ isActive }) =>
+                cn(
+                  'flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg transition-default min-w-[44px] min-h-[44px] justify-center',
+                  isActive ? 'text-accent' : 'text-text-muted'
+                )
+              }
+            >
+              <div className="relative">
+                <Icon size={20} />
+                {hasBadge && (
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-error rounded-full" />
+                )}
+              </div>
+              <span className="text-[10px] font-medium">{label}</span>
+            </NavLink>
+          )
+        })}
 
-        return (
-          <Link
-            key={item.path}
-            to={item.path}
-            className={cn(
-              'flex-1 flex flex-col items-center justify-center',
-              'py-3 gap-1',
-              'min-h-[56px]', // min 44px touch area
-              'transition-colors duration-[var(--transition)]',
-              isActive
-                ? 'text-[var(--accent)]'
-                : 'text-[var(--text-muted)] active:text-[var(--text-primary)]'
-            )}
-            aria-label={item.label}
-          >
-            <div className="relative">
-              <Icon size={22} strokeWidth={isActive ? 2.5 : 2} />
-              {badge !== undefined && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-0.5 bg-[var(--accent)] text-[var(--text-inverse)] text-[10px] font-bold rounded-full flex items-center justify-center">
-                  {badge > 99 ? '99+' : badge}
-                </span>
-              )}
-            </div>
-            <span className="text-[10px] font-medium">{item.label}</span>
-          </Link>
-        )
-      })}
+        {/* Profil */}
+        <NavLink
+          to={profile ? `/${profile.username}` : '/ayarlar'}
+          className={({ isActive }) =>
+            cn(
+              'flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg transition-default min-w-[44px] min-h-[44px] justify-center',
+              isActive ? 'text-accent' : 'text-text-muted'
+            )
+          }
+        >
+          {profile?.avatar_url ? (
+            <img
+              src={profile.avatar_url}
+              alt={profile.display_name}
+              className="w-6 h-6 rounded-full object-cover border border-line"
+              loading="lazy"
+            />
+          ) : (
+            <User size={20} />
+          )}
+          <span className="text-[10px] font-medium">Profil</span>
+        </NavLink>
+      </div>
     </nav>
   )
 }

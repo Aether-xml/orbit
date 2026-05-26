@@ -1,60 +1,95 @@
-import { type ReactNode } from 'react'
-import { useMediaQuery } from '@/hooks/useMediaQuery'
-import { Sidebar } from './Sidebar'
-import { MobileNav } from './MobileNav'
-import { RightPanel } from './RightPanel'
-import { ToastContainer } from '@/components/ui/Toast'
-import { cn } from '@/lib/utils'
+import { useEffect } from 'react'
+import { Outlet, useLocation } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
+import { useQueryClient } from '@tanstack/react-query'
+import Sidebar from './Sidebar'
+import MobileNav from './MobileNav'
+import RightPanel from './RightPanel'
+import { supabase } from '@/lib/supabase'
+import { useAuthStore } from '@/store/authStore'
 
-interface AppLayoutProps {
-  children: ReactNode
-  showRightPanel?: boolean
+// Bu sayfalarda sağ panel gösterilmez
+const noRightPanel = ['/mesajlar', '/reels', '/sunucular']
+
+const pageVariants = {
+  initial: { opacity: 0, y: 8 },
+  animate: { opacity: 1, y: 0 },
+  exit:    { opacity: 0, y: -4 },
 }
 
-export const AppLayout = ({
-  children,
-  showRightPanel = true,
-}: AppLayoutProps) => {
-  const isDesktop = useMediaQuery('(min-width: 1024px)')
-  const isTablet = useMediaQuery('(min-width: 768px)')
+export default function AppLayout() {
+  const { pathname } = useLocation()
+  const showRight = !noRightPanel.some((p) => pathname.startsWith(p))
+  const { user } = useAuthStore()
+  const queryClient = useQueryClient()
+
+  // Realtime: bildirim ve DM sayaçlarını güncelle
+  useEffect(() => {
+    if (!user?.id) return
+
+    const channel = supabase
+      .channel(`app-realtime:${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
+        () => {
+          void queryClient.invalidateQueries({ queryKey: ['unread-notifications', user.id] })
+          void queryClient.invalidateQueries({ queryKey: ['notifications', user.id] })
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'direct_messages' },
+        () => {
+          void queryClient.invalidateQueries({ queryKey: ['unread-messages', user.id] })
+          void queryClient.invalidateQueries({ queryKey: ['conversations', user.id] })
+        }
+      )
+      .subscribe()
+
+    return () => { void supabase.removeChannel(channel) }
+  }, [user?.id, queryClient])
 
   return (
-    <div className="min-h-screen bg-[var(--bg-base)]">
+    <div className="min-h-dvh bg-bg-base">
       {/* Desktop sidebar */}
-      {isTablet && <Sidebar />}
+      <div className="hidden lg:block">
+        <Sidebar />
+      </div>
 
-      {/* Ana içerik */}
-      <main
-        className={cn(
-          'min-h-screen',
-          isTablet ? 'ml-[240px]' : 'mb-14', // mobilde bottom nav için
-          isDesktop && showRightPanel ? 'mr-[320px]' : ''
-        )}
-      >
-        <div
-          className={cn(
-            'mx-auto',
-            'max-w-[600px]',
-            isDesktop && showRightPanel ? 'max-w-none' : 'max-w-[600px]',
-            isTablet ? 'border-x border-[var(--border)]' : ''
+      {/* Ana içerik alanı */}
+      <div className="lg:pl-[240px]">
+        <div className={`mx-auto flex ${showRight ? 'max-w-[1120px]' : 'max-w-[800px]'}`}>
+          {/* Orta feed */}
+          <main className="flex-1 min-w-0 min-h-dvh border-x border-line">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={pathname}
+                variants={pageVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={{ duration: 0.15, ease: 'easeOut' }}
+                className="min-h-dvh"
+              >
+                <Outlet />
+              </motion.div>
+            </AnimatePresence>
+          </main>
+
+          {/* Sağ panel — sadece desktop */}
+          {showRight && (
+            <div className="hidden xl:block pl-6 pt-4 pb-8">
+              <RightPanel />
+            </div>
           )}
-        >
-          {children}
         </div>
-      </main>
-
-      {/* Sağ panel (desktop) */}
-      {isDesktop && showRightPanel && (
-        <div className="fixed right-0 top-0 h-full w-[320px] border-l border-[var(--border)] overflow-y-auto px-4 py-6">
-          <RightPanel />
-        </div>
-      )}
+      </div>
 
       {/* Mobil alt nav */}
-      {!isTablet && <MobileNav />}
-
-      {/* Toast bildirimleri */}
-      <ToastContainer />
+      <div className="lg:hidden">
+        <MobileNav />
+      </div>
     </div>
   )
 }

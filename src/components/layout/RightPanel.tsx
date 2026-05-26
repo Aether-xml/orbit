@@ -1,250 +1,203 @@
-import { useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { TrendingUp, Users } from 'lucide-react'
-import { Avatar } from '@/components/ui/Avatar'
-import { Button } from '@/components/ui/Button'
-import { Skeleton } from '@/components/ui/Skeleton'
-import { Badge } from '@/components/ui/Badge'
-import {
-  useTrendingHashtags,
-  useSuggestedProfiles,
-  useFollow,
-} from '@/hooks/useSearch'
-import { formatCount, cn } from '@/lib/utils'
-import type { Profile } from '@/types/database'
-import type { BadgeKey } from '@/types/user'
+import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
+import { TrendingUp, Search } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { useAuthStore } from '@/store/authStore'
+import type { Hashtag, Profile } from '@/types/database'
 
-export const RightPanel = () => {
+export default function RightPanel() {
   return (
-    <aside className="space-y-4">
-      <SearchBox />
-      <TrendingSection />
-      <SuggestedProfiles />
+    <aside className="w-[320px] flex-shrink-0">
+      <div className="sticky top-0 pt-4 space-y-4">
+        <SearchBox />
+        <TrendingHashtags />
+        <SuggestedUsers />
+      </div>
     </aside>
   )
 }
 
-// ── Arama kutusu ──────────────────────────────────────────
-const SearchBox = () => (
-  <Link
-    to="/kesif"
-    className={cn(
-      'flex items-center gap-3 w-full px-4 py-2.5',
-      'bg-[var(--bg-surface)] border border-[var(--border)]',
-      'rounded-[var(--radius-full)]',
-      'text-[var(--text-muted)] text-sm',
-      'hover:border-[var(--accent)]',
-      'transition-colors duration-[var(--transition)]'
-    )}
-  >
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-    >
-      <circle cx="11" cy="11" r="8" />
-      <path d="m21 21-4.35-4.35" />
-    </svg>
-    Ara...
-  </Link>
-)
-
-// ── Trendler ──────────────────────────────────────────────
-const TrendingSection = () => {
-  const { data: trends, isLoading } = useTrendingHashtags()
-
+function SearchBox() {
   return (
-    <section className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-[var(--radius-xl)] overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--border)]">
-        <TrendingUp size={15} className="text-[var(--accent)]" />
-        <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-          Gündemde
-        </h3>
-      </div>
-
-      <div>
-        {isLoading ? (
-          <TrendingSkeleton />
-        ) : (trends ?? []).length === 0 ? (
-          <p className="px-4 py-3 text-xs text-[var(--text-muted)]">
-            Henüz trend yok.
-          </p>
-        ) : (
-          (trends ?? []).slice(0, 5).map((trend, i) => (
-            <Link
-              key={trend.id}
-              to={`/kesif?q=%23${trend.name}`}
-              className="flex items-center justify-between px-4 py-2.5 hover:bg-[var(--bg-elevated)] transition-colors"
-            >
-              <div>
-                <p className="text-[10px] text-[var(--text-muted)]">
-                  #{i + 1} Trend
-                </p>
-                <p className="text-sm font-medium text-[var(--text-primary)]">
-                  #{trend.name}
-                </p>
-              </div>
-              <p className="text-xs text-[var(--text-muted)]">
-                {formatCount(trend.post_count)}
-              </p>
-            </Link>
-          ))
-        )}
-      </div>
-
-      <Link
-        to="/kesif"
-        className="block px-4 py-2.5 text-xs text-[var(--accent)] hover:bg-[var(--bg-elevated)] transition-colors text-center border-t border-[var(--border)]"
-      >
-        Daha fazla gör
-      </Link>
-    </section>
+    <Link
+      to="/kesif"
+      className="flex items-center gap-3 bg-bg-surface border border-line rounded-full px-4 py-2.5 text-text-muted hover:border-accent transition-default group"
+    >
+      <Search size={15} className="group-hover:text-accent transition-default" />
+      <span className="text-sm">Ara...</span>
+    </Link>
   )
 }
 
-// ── Önerilen Hesaplar ─────────────────────────────────────
-const SuggestedProfiles = () => {
-  const { data: profiles, isLoading } = useSuggestedProfiles()
-  const { toggleFollow, isFollowing, isPending, initFollowState } = useFollow()
+function TrendingHashtags() {
+  const [hashtags, setHashtags] = useState<Hashtag[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (profiles && profiles.length > 0) {
-      initFollowState(profiles.map((p) => p.id))
-    }
-  }, [profiles, initFollowState])
+    supabase
+      .from('hashtags')
+      .select('*')
+      .order('post_count', { ascending: false })
+      .limit(5)
+      .then(({ data }) => {
+        if (data) setHashtags(data as Hashtag[])
+        setLoading(false)
+      })
+  }, [])
 
   return (
-    <section className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-[var(--radius-xl)] overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
-        <div className="flex items-center gap-2">
-          <Users size={15} className="text-[var(--accent)]" />
-          <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-            Önerilen Hesaplar
-          </h3>
-        </div>
-        <Link
-          to="/kesif"
-          className="text-xs text-[var(--accent)] hover:underline"
-        >
-          Tümü
-        </Link>
+    <div className="card p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <TrendingUp size={15} className="text-accent" />
+        <h3 className="text-text-primary text-sm font-semibold">Gündem</h3>
       </div>
 
-      <div>
-        {isLoading ? (
-          <ProfileSkeleton />
-        ) : (profiles ?? []).length === 0 ? (
-          <p className="px-4 py-3 text-xs text-[var(--text-muted)]">
-            Şimdilik öneri yok.
-          </p>
-        ) : (
-          (profiles ?? []).slice(0, 4).map((profile) => (
-            <SuggestedProfileRow
-              key={profile.id}
-              profile={profile}
-              isFollowing={isFollowing(profile.id)}
-              isPending={isPending(profile.id)}
-              onFollow={() => toggleFollow(profile.id, profile.is_private)}
-            />
-          ))
-        )}
-      </div>
-    </section>
-  )
-}
-
-// ── Profil Satırı (sağ panel için küçük) ──────────────────
-interface SuggestedProfileRowProps {
-  profile: Profile
-  isFollowing: boolean
-  isPending: boolean
-  onFollow: () => void
-}
-
-const SuggestedProfileRow = ({
-  profile,
-  isFollowing,
-  isPending,
-  onFollow,
-}: SuggestedProfileRowProps) => {
-  const navigate = useNavigate()
-
-  return (
-    <div
-      className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer"
-      onClick={() => navigate(`/${profile.username}`)}
-    >
-      <Avatar
-        src={profile.avatar_url}
-        fallback={profile.display_name}
-        size="sm"
-        isNova={profile.is_nova_plus}
-        className="shrink-0"
-      />
-
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1">
-          <span className="text-xs font-semibold text-[var(--text-primary)] truncate">
-            {profile.display_name}
-          </span>
-          {profile.selected_badge && (
-            <Badge badgeKey={profile.selected_badge as BadgeKey} size="sm" />
-          )}
-          {profile.is_private && (
-            <span className="text-[var(--text-muted)] text-[10px] shrink-0">
-              🔒
-            </span>
-          )}
-        </div>
-        <p className="text-[11px] text-[var(--text-muted)] truncate">
-          @{profile.username}
-        </p>
-      </div>
-
-      <Button
-        size="sm"
-        variant={isFollowing || isPending ? 'outline' : 'primary'}
-        onClick={(e) => {
-          e.stopPropagation()
-          onFollow()
-        }}
-        className="shrink-0 text-xs px-2.5 h-7"
-      >
-        {isFollowing ? 'Takipte' : isPending ? 'Bekliyor' : 'Takip Et'}
-      </Button>
+      {loading ? (
+        <HashtagSkeletons />
+      ) : hashtags.length === 0 ? (
+        <p className="text-text-muted text-xs">Henüz trend yok.</p>
+      ) : (
+        <ul className="space-y-2">
+          {hashtags.map((tag) => (
+            <li key={tag.id}>
+              <Link
+                to={`/kesif?q=%23${tag.name}`}
+                className="flex items-center justify-between group"
+              >
+                <span className="text-text-primary text-sm font-medium group-hover:text-accent transition-default">
+                  #{tag.name}
+                </span>
+                <span className="text-text-muted text-xs">{tag.post_count} post</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
 
-// ── Skeleton ──────────────────────────────────────────────
-const TrendingSkeleton = () => (
-  <div>
-    {Array.from({ length: 5 }).map((_, i) => (
-      <div key={i} className="flex items-center justify-between px-4 py-2.5">
-        <div className="space-y-1">
-          <Skeleton className="w-10 h-2.5" />
-          <Skeleton className="w-20 h-3.5" />
-        </div>
-        <Skeleton className="w-10 h-3" />
-      </div>
-    ))}
-  </div>
-)
+type SuggestedProfile = Pick<Profile, 'id' | 'username' | 'display_name' | 'avatar_url' | 'follower_count' | 'is_verified' | 'is_nova_plus'>
 
-const ProfileSkeleton = () => (
-  <div>
-    {Array.from({ length: 4 }).map((_, i) => (
-      <div key={i} className="flex items-center gap-2.5 px-4 py-2.5">
-        <Skeleton className="w-8 h-8 shrink-0" rounded="full" />
-        <div className="flex-1 space-y-1.5">
-          <Skeleton className="w-20 h-3" />
-          <Skeleton className="w-14 h-2.5" />
-        </div>
-        <Skeleton className="w-14 h-7" />
-      </div>
-    ))}
-  </div>
-)
+function SuggestedUsers() {
+  const { profile: currentProfile } = useAuthStore()
+  const [users, setUsers] = useState<SuggestedProfile[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!currentProfile) return
+    supabase
+      .from('profiles')
+      .select('id, username, display_name, avatar_url, follower_count, is_verified, is_nova_plus')
+      .neq('id', currentProfile.id)
+      .order('follower_count', { ascending: false })
+      .limit(4)
+      .then(({ data }) => {
+        if (data) setUsers(data as SuggestedProfile[])
+        setLoading(false)
+      })
+  }, [currentProfile])
+
+  return (
+    <div className="card p-4 space-y-3">
+      <h3 className="text-text-primary text-sm font-semibold">Önerilen Kişiler</h3>
+
+      {loading ? (
+        <UserSkeletons />
+      ) : users.length === 0 ? (
+        <p className="text-text-muted text-xs">Öneri bulunamadı.</p>
+      ) : (
+        <ul className="space-y-3">
+          {users.map((user) => (
+            <li key={user.id} className="flex items-center gap-3">
+              <Link to={`/${user.username}`} className="flex-shrink-0">
+                <div className="w-9 h-9 rounded-full bg-bg-elevated border border-line overflow-hidden">
+                  {user.avatar_url ? (
+                    <img src={user.avatar_url} alt={user.display_name} className="w-full h-full object-cover" loading="lazy" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-xs text-text-muted">
+                      {user.display_name[0]?.toUpperCase()}
+                    </div>
+                  )}
+                </div>
+              </Link>
+              <div className="flex-1 min-w-0">
+                <Link to={`/${user.username}`} className="flex items-center gap-1 hover:underline">
+                  <span className="text-text-primary text-sm font-medium truncate">{user.display_name}</span>
+                  {user.is_nova_plus && <span className="text-accent text-xs flex-shrink-0">⭐</span>}
+                  {user.is_verified && <span className="text-info text-xs flex-shrink-0">✓</span>}
+                </Link>
+                <p className="text-text-muted text-xs">@{user.username}</p>
+              </div>
+              <FollowButton userId={user.id} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function FollowButton({ userId }: { userId: string }) {
+  const { user } = useAuthStore()
+  const [followed, setFollowed] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  const toggle = async () => {
+    if (!user || loading) return
+    setLoading(true)
+    if (followed) {
+      await supabase.from('follows').delete()
+        .eq('follower_id', user.id).eq('following_id', userId)
+    } else {
+      await supabase.from('follows').insert({ follower_id: user.id, following_id: userId })
+    }
+    setFollowed((v) => !v)
+    setLoading(false)
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      disabled={loading}
+      className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-default flex-shrink-0 ${
+        followed
+          ? 'border border-line text-text-secondary hover:text-error hover:border-error'
+          : 'bg-accent hover:bg-accent-hover text-text-inverse'
+      }`}
+    >
+      {followed ? 'Takip Ediliyor' : 'Takip Et'}
+    </button>
+  )
+}
+
+function HashtagSkeletons() {
+  return (
+    <ul className="space-y-2">
+      {[80, 60, 70, 50, 65].map((w) => (
+        <li key={w} className="flex items-center justify-between">
+          <div className={`skeleton h-4 rounded`} style={{ width: `${w}%` }} />
+          <div className="skeleton h-3 w-12 rounded" />
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function UserSkeletons() {
+  return (
+    <ul className="space-y-3">
+      {[1, 2, 3].map((i) => (
+        <li key={i} className="flex items-center gap-3">
+          <div className="skeleton w-9 h-9 rounded-full" />
+          <div className="flex-1 space-y-1.5">
+            <div className="skeleton h-3.5 w-24 rounded" />
+            <div className="skeleton h-3 w-16 rounded" />
+          </div>
+          <div className="skeleton h-7 w-20 rounded-full" />
+        </li>
+      ))}
+    </ul>
+  )
+}

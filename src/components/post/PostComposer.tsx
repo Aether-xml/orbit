@@ -1,370 +1,350 @@
-import { useState, useRef, useCallback } from 'react'
-import { Image, Video, BarChart2, X, Smile } from 'lucide-react'
-import { Avatar } from '@/components/ui/Avatar'
-import { Button } from '@/components/ui/Button'
+import { useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { ImageIcon, X, BarChart2, Quote } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useCreatePost } from '@/hooks/usePosts'
-import { useAuthStore } from '@/store/authStore'
+import { timeAgo } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
+import { uploadFile, uniquePath } from '@/lib/upload'
+import { useAuthStore } from '@/store/authStore'
 import { toast } from '@/store/uiStore'
-import type { PostWithProfile } from '@/hooks/usePosts'
+import type { PostWithAuthor } from '@/types/database'
+import Avatar from '@/components/ui/Avatar'
+import Button from '@/components/ui/Button'
 
-interface PostComposerProps {
-  replyTo?: PostWithProfile
-  onSuccess?: () => void
-  autoFocus?: boolean
+type PostComposerProps = {
+  onPost?: () => void
   placeholder?: string
+  replyToId?: string
+  quotePostId?: string
+  quotePost?: PostWithAuthor
 }
 
-interface MediaPreview {
-  file: File
-  preview: string
-  type: 'image' | 'video'
-}
-
-const MAX_IMAGES_FREE = 4
-const MAX_IMAGES_NOVA = 10
-
-export const PostComposer = ({
-  replyTo,
-  onSuccess,
-  autoFocus = false,
-  placeholder,
-}: PostComposerProps) => {
-  const profile = useAuthStore((s) => s.profile)
-  const [content, setContent] = useState('')
-  const [media, setMedia] = useState<MediaPreview[]>([])
-  const [isUploading, setIsUploading] = useState(false)
+export default function PostComposer({
+  onPost,
+  placeholder = 'Ne düşünüyorsun?',
+  replyToId,
+  quotePostId,
+  quotePost,
+}: PostComposerProps) {
+  const { user, profile } = useAuthStore()
+  const queryClient = useQueryClient()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const { mutateAsync: createPost, isPending } = useCreatePost()
 
-  const maxChars = profile?.is_nova_plus ? 500 : 280
-  const maxMedia = profile?.is_nova_plus ? MAX_IMAGES_NOVA : MAX_IMAGES_FREE
-  const charCount = content.length
-  const isOverLimit = charCount > maxChars
-  const canSubmit = content.trim().length > 0 && !isOverLimit && !isPending && !isUploading
+  const MAX_IMAGES = profile?.is_nova_plus ? 10 : 4
 
-  // Textarea otomatik yükseklik
-  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+  const [content, setContent] = useState('')
+  const [images, setImages] = useState<File[]>([])
+  const [previews, setPreviews] = useState<string[]>([])
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Poll state
+  const [pollOpen, setPollOpen] = useState(false)
+  const [pollOptions, setPollOptions] = useState(['', ''])
+  const [pollDuration, setPollDuration] = useState(24)
+
+  const LIMIT = profile?.is_nova_plus ? 500 : 280
+  const remaining = LIMIT - content.length
+  const isOverLimit = remaining < 0
+  const isEmpty = content.trim().length === 0 && images.length === 0
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setContent(e.target.value)
-    const ta = e.target
-    ta.style.height = 'auto'
-    ta.style.height = `${Math.min(ta.scrollHeight, 300)}px`
-  }
-
-  // Medya seç
-  const handleMediaSelect = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = Array.from(e.target.files ?? [])
-      if (!files.length) return
-
-      const remaining = maxMedia - media.length
-      const selected = files.slice(0, remaining)
-
-      if (files.length > remaining) {
-        toast.warning(
-          `En fazla ${maxMedia} medya ekleyebilirsiniz.${
-            !profile?.is_nova_plus ? ' Nova+ ile daha fazla ekle.' : ''
-          }`
-        )
-      }
-
-      const previews: MediaPreview[] = selected.map((file) => ({
-        file,
-        preview: URL.createObjectURL(file),
-        type: file.type.startsWith('video') ? 'video' : 'image',
-      }))
-
-      setMedia((prev) => [...prev, ...previews])
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    },
-    [media.length, maxMedia, profile?.is_nova_plus]
-  )
-
-  const removeMedia = (index: number) => {
-    setMedia((prev) => {
-      URL.revokeObjectURL(prev[index].preview)
-      return prev.filter((_, i) => i !== index)
-    })
-  }
-
-  // Medya Supabase Storage'a yükle
-  const uploadMedia = async (): Promise<{
-    urls: string[]
-    types: string[]
-  }> => {
-    if (media.length === 0) return { urls: [], types: [] }
-
-    const uploads = await Promise.all(
-      media.map(async (m) => {
-        const ext = m.file.name.split('.').pop() ?? 'jpg'
-        const path = `posts/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-
-        const { error } = await supabase.storage
-          .from('media')
-          .upload(path, m.file, { cacheControl: '3600', upsert: false })
-
-        if (error) throw error
-
-        const { data } = supabase.storage.from('media').getPublicUrl(path)
-        return { url: data.publicUrl, type: m.type }
-      })
-    )
-
-    return {
-      urls: uploads.map((u) => u.url),
-      types: uploads.map((u) => u.type),
+    const el = textareaRef.current
+    if (el) {
+      el.style.height = 'auto'
+      el.style.height = `${el.scrollHeight}px`
     }
+  }
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    const slots = MAX_IMAGES - images.length
+    const selected = files.slice(0, slots)
+    setImages((prev) => [...prev, ...selected])
+    setPreviews((prev) => [...prev, ...selected.map((f) => URL.createObjectURL(f))])
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const removeImage = (i: number) => {
+    const url = previews[i]
+    if (url) URL.revokeObjectURL(url)
+    setImages((prev) => prev.filter((_, idx) => idx !== i))
+    setPreviews((prev) => prev.filter((_, idx) => idx !== i))
+  }
+
+  const togglePoll = () => {
+    if (images.length > 0) return
+    setPollOpen((v) => !v)
+  }
+
+  const addPollOption = () => {
+    if (pollOptions.length >= 4) return
+    setPollOptions((prev) => [...prev, ''])
+  }
+
+  const removePollOption = (i: number) => {
+    if (pollOptions.length <= 2) return
+    setPollOptions((prev) => prev.filter((_, idx) => idx !== i))
+  }
+
+  const updatePollOption = (i: number, value: string) => {
+    setPollOptions((prev) => prev.map((opt, idx) => (idx === i ? value : opt)))
   }
 
   const handleSubmit = async () => {
-    if (!canSubmit) return
+    if (isEmpty || isOverLimit || isSubmitting || !user) return
+    setIsSubmitting(true)
 
-    try {
-      setIsUploading(true)
-      const { urls, types } = await uploadMedia()
-      setIsUploading(false)
+    let media_urls: string[] = []
 
-      await createPost({
-        content: content.trim(),
-        mediaUrls: urls,
-        mediaTypes: types,
-        replyToId: replyTo?.id,
-      })
-
-      // Temizle
-      setContent('')
-      setMedia([])
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto'
+    if (images.length > 0) {
+      try {
+        media_urls = await Promise.all(
+          images.map((file) => uploadFile('post-images', file, uniquePath(user.id, file)))
+        )
+      } catch {
+        toast.error('Resim yüklenemedi')
+        setIsSubmitting(false)
+        return
       }
-      onSuccess?.()
-    } catch (err) {
-      setIsUploading(false)
-      const message = err instanceof Error ? err.message : 'Bilinmeyen hata'
-      toast.error(message)
     }
+
+    const poll_data =
+      pollOpen && pollOptions.every((o) => o.trim())
+        ? {
+            question: content.trim(),
+            options: pollOptions
+              .filter((o) => o.trim())
+              .map((text, id) => ({ id: String(id), text, vote_count: 0 })),
+            ends_at: new Date(Date.now() + pollDuration * 3600 * 1000).toISOString(),
+            allows_multiple: false,
+          }
+        : null
+
+    const { error } = await supabase.from('posts').insert({
+      user_id: user.id,
+      content: content.trim(),
+      media_urls,
+      ...(replyToId ? { reply_to_id: replyToId } : {}),
+      ...(quotePostId ? { quote_of_id: quotePostId } : {}),
+      ...(poll_data ? { poll_data } : {}),
+    })
+
+    if (error) {
+      toast.error('Gönderi oluşturulamadı')
+    } else {
+      setContent('')
+      previews.forEach((u) => URL.revokeObjectURL(u))
+      setImages([])
+      setPreviews([])
+      setPollOpen(false)
+      setPollOptions(['', ''])
+      setPollDuration(24)
+      if (textareaRef.current) textareaRef.current.style.height = 'auto'
+      void queryClient.invalidateQueries({ queryKey: ['feed'] })
+      if (replyToId) void queryClient.invalidateQueries({ queryKey: ['comments', replyToId] })
+      onPost?.()
+    }
+
+    setIsSubmitting(false)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void handleSubmit()
   }
 
   if (!profile) return null
 
-  const defaultPlaceholder = replyTo
-    ? `@${replyTo.profiles.username}'e yanıtla...`
-    : 'Yörüngene ne paylaşıyorsun?'
-
   return (
-    <div className="p-4 border-b border-[var(--border)]">
-      {/* Yanıtlanıyor gösterimi */}
-      {replyTo && (
-        <div className="flex items-center gap-2 mb-3 text-xs text-[var(--text-muted)]">
-          <span>↩</span>
-          <span>
-            <strong className="text-[var(--text-secondary)]">
-              @{replyTo.profiles.username}
-            </strong>{' '}
-            kullanıcısına yanıt veriyorsun
-          </span>
-        </div>
-      )}
-
+    <div className="border-b border-line p-4">
       <div className="flex gap-3">
-        {/* Avatar */}
-        <Avatar
-          src={profile.avatar_url}
-          fallback={profile.display_name}
-          size="md"
-          isNova={profile.is_nova_plus}
-          className="shrink-0 mt-0.5"
-        />
+        <Avatar src={profile.avatar_url} fallback={profile.display_name} size="md" isNova={profile.is_nova_plus} />
 
-        {/* İçerik alanı */}
-        <div className="flex-1 min-w-0">
-          {/* Textarea */}
+        <div className="flex-1 min-w-0 space-y-3">
           <textarea
             ref={textareaRef}
             value={content}
-            onChange={handleContentChange}
-            placeholder={placeholder ?? defaultPlaceholder}
-            autoFocus={autoFocus}
-            rows={replyTo ? 2 : 3}
-            className={cn(
-              'w-full bg-transparent',
-              'text-[var(--text-primary)] text-sm',
-              'placeholder:text-[var(--text-muted)]',
-              'resize-none outline-none',
-              'leading-relaxed',
-              'min-h-[60px] max-h-[300px]',
-              'transition-colors duration-[var(--transition)]'
-            )}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder}
+            rows={3}
+            className="w-full bg-transparent text-text-primary placeholder:text-text-muted resize-none outline-none text-[15px] leading-relaxed"
           />
 
-          {/* Medya önizleme */}
-          {media.length > 0 && (
-            <MediaPreviewGrid media={media} onRemove={removeMedia} />
+          {/* Quote preview */}
+          {quotePost && (
+            <div className="border border-line rounded-xl p-3 text-sm text-text-secondary bg-bg-surface">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Quote size={12} className="text-text-muted" />
+                <span className="font-medium text-text-primary text-xs">@{quotePost.profiles.username}</span>
+                <span className="text-text-muted text-xs">·</span>
+                <span className="text-text-muted text-xs">{timeAgo(quotePost.created_at)}</span>
+              </div>
+              <p className="line-clamp-2 text-xs leading-relaxed">{quotePost.content}</p>
+            </div>
           )}
 
-          {/* Alt araç çubuğu */}
-          <div className="flex items-center justify-between mt-3 pt-3 border-t border-[var(--border-subtle)]">
-            {/* Sol: Araçlar */}
-            <div className="flex items-center gap-1">
-              {/* Medya ekle */}
+          {/* Poll panel */}
+          {pollOpen && (
+            <div className="border border-line rounded-xl p-3 space-y-2 bg-bg-surface">
+              <p className="text-xs font-medium text-text-secondary mb-2">Anket seçenekleri</p>
+              {pollOptions.map((opt, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={opt}
+                    onChange={(e) => updatePollOption(i, e.target.value)}
+                    placeholder={`Seçenek ${i + 1}`}
+                    maxLength={80}
+                    className="flex-1 bg-bg-elevated border border-line rounded-lg px-3 py-1.5 text-sm text-text-primary placeholder:text-text-muted outline-none focus:border-accent/60 transition-default"
+                  />
+                  {pollOptions.length > 2 && (
+                    <button
+                      type="button"
+                      onClick={() => removePollOption(i)}
+                      className="p-1 rounded-full text-text-muted hover:text-error hover:bg-error/10 transition-default flex-shrink-0"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              ))}
+
+              {pollOptions.length < 4 && (
+                <button
+                  type="button"
+                  onClick={addPollOption}
+                  className="text-xs text-accent hover:text-accent/80 transition-default"
+                >
+                  + Seçenek ekle
+                </button>
+              )}
+
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-xs text-text-secondary">Süre:</span>
+                <select
+                  value={pollDuration}
+                  onChange={(e) => setPollDuration(Number(e.target.value))}
+                  className="bg-bg-elevated border border-line rounded-lg px-2 py-1 text-xs text-text-primary outline-none focus:border-accent/60 transition-default"
+                >
+                  <option value={1}>1 saat</option>
+                  <option value={24}>24 saat</option>
+                  <option value={72}>3 gün</option>
+                  <option value={168}>7 gün</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* Image preview grid */}
+          {previews.length > 0 && (
+            <div
+              className={cn(
+                'grid gap-1 rounded-xl overflow-hidden',
+                previews.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
+              )}
+            >
+              {previews.map((url, i) => (
+                <div
+                  key={url}
+                  className={cn(
+                    'relative bg-bg-surface',
+                    previews.length === 1 ? 'aspect-video' : 'aspect-square',
+                    previews.length === 3 && i === 0 ? 'row-span-2' : ''
+                  )}
+                >
+                  <img src={url} alt="" className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => removeImage(i)}
+                    className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 flex items-center justify-center text-white hover:bg-black/80 transition-default"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between pt-1 border-t border-line/50">
+            <div className="flex gap-1">
+              {/* Image button — disabled when poll is open */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={images.length >= MAX_IMAGES || pollOpen}
+                className={cn(
+                  'p-2 rounded-full transition-default',
+                  images.length >= MAX_IMAGES || pollOpen
+                    ? 'text-text-muted opacity-40 cursor-not-allowed'
+                    : 'text-text-muted hover:text-accent hover:bg-accent/10'
+                )}
+                title={
+                  pollOpen
+                    ? 'Anket açıkken medya eklenemez'
+                    : images.length >= MAX_IMAGES
+                      ? `En fazla ${MAX_IMAGES} resim`
+                      : 'Resim ekle'
+                }
+              >
+                <ImageIcon size={18} />
+              </button>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*,video/*"
+                accept="image/*"
                 multiple
                 className="hidden"
-                onChange={handleMediaSelect}
-                disabled={media.length >= maxMedia}
+                onChange={handleImageSelect}
               />
-              <ToolButton
-                icon={<Image size={18} />}
-                label="Fotoğraf/video ekle"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={media.length >= maxMedia}
-              />
+
+              {/* Poll button — disabled when images exist */}
+              <button
+                type="button"
+                onClick={togglePoll}
+                disabled={images.length > 0}
+                className={cn(
+                  'p-2 rounded-full transition-default',
+                  images.length > 0
+                    ? 'text-text-muted opacity-40 cursor-not-allowed'
+                    : pollOpen
+                      ? 'text-accent bg-accent/10'
+                      : 'text-text-muted hover:text-accent hover:bg-accent/10'
+                )}
+                title={images.length > 0 ? 'Medya varken anket açılamaz' : 'Anket ekle'}
+              >
+                <BarChart2 size={18} />
+              </button>
             </div>
 
-            {/* Sağ: Karakter sayacı + Paylaş */}
             <div className="flex items-center gap-3">
-              {/* Karakter sayacı */}
-              {charCount > 0 && (
-                <div className="flex items-center gap-2">
-                  {/* Dairesel göstergeg */}
-                  <CharCircle current={charCount} max={maxChars} />
-                  {isOverLimit && (
-                    <span className="text-xs text-[var(--error)]">
-                      -{charCount - maxChars}
-                    </span>
+              {content.length > 0 && (
+                <span
+                  className={cn(
+                    'text-sm tabular-nums',
+                    remaining < 0
+                      ? 'text-error font-medium'
+                      : remaining < 20
+                        ? 'text-warning'
+                        : 'text-text-muted'
                   )}
-                </div>
+                >
+                  {remaining}
+                </span>
               )}
-
               <Button
-                variant="primary"
                 size="sm"
-                onClick={handleSubmit}
-                disabled={!canSubmit}
-                isLoading={isPending || isUploading}
+                onClick={() => void handleSubmit()}
+                disabled={isEmpty || isOverLimit}
+                loading={isSubmitting}
               >
-                {replyTo ? 'Yanıtla' : 'Paylaş'}
+                Paylaş
               </Button>
             </div>
           </div>
         </div>
       </div>
     </div>
-  )
-}
-
-// ── Medya Önizleme Grid ───────────────────────────────────
-const MediaPreviewGrid = ({
-  media,
-  onRemove,
-}: {
-  media: { preview: string; type: 'image' | 'video' }[]
-  onRemove: (index: number) => void
-}) => (
-  <div
-    className={cn(
-      'grid gap-2 mt-2 rounded-[var(--radius-lg)] overflow-hidden',
-      media.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
-    )}
-  >
-    {media.map((m, i) => (
-      <div key={i} className="relative group aspect-square bg-[var(--bg-elevated)] rounded-[var(--radius-md)] overflow-hidden">
-        {m.type === 'video' ? (
-          <video
-            src={m.preview}
-            className="w-full h-full object-cover"
-            muted
-          />
-        ) : (
-          <img
-            src={m.preview}
-            alt={`Önizleme ${i + 1}`}
-            className="w-full h-full object-cover"
-          />
-        )}
-        <button
-          onClick={() => onRemove(i)}
-          className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/70 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black"
-        >
-          <X size={12} />
-        </button>
-      </div>
-    ))}
-  </div>
-)
-
-// ── Araç Butonu ───────────────────────────────────────────
-const ToolButton = ({
-  icon,
-  label,
-  onClick,
-  disabled,
-}: {
-  icon: React.ReactNode
-  label: string
-  onClick: () => void
-  disabled?: boolean
-}) => (
-  <button
-    type="button"
-    onClick={onClick}
-    disabled={disabled}
-    aria-label={label}
-    className={cn(
-      'p-2 rounded-[var(--radius-full)]',
-      'text-[var(--accent)]',
-      'hover:bg-[var(--accent-muted)]',
-      'transition-colors duration-[var(--transition)]',
-      'disabled:opacity-30 disabled:cursor-not-allowed'
-    )}
-  >
-    {icon}
-  </button>
-)
-
-// ── Dairesel Karakter Göstergesi ──────────────────────────
-const CharCircle = ({ current, max }: { current: number; max: number }) => {
-  const pct = Math.min(current / max, 1)
-  const isNearLimit = current > max * 0.8
-  const isOver = current > max
-  const size = 24
-  const strokeWidth = 2.5
-  const r = (size - strokeWidth) / 2
-  const circumference = 2 * Math.PI * r
-  const dash = circumference * pct
-
-  return (
-    <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={r}
-        fill="none"
-        stroke="var(--border)"
-        strokeWidth={strokeWidth}
-      />
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={r}
-        fill="none"
-        stroke={
-          isOver
-            ? 'var(--error)'
-            : isNearLimit
-            ? 'var(--warning)'
-            : 'var(--accent)'
-        }
-        strokeWidth={strokeWidth}
-        strokeDasharray={`${dash} ${circumference}`}
-        strokeLinecap="round"
-        style={{ transition: 'stroke-dasharray 0.15s ease' }}
-      />
-    </svg>
   )
 }

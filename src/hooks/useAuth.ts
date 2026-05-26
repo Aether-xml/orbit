@@ -1,85 +1,45 @@
 import { useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { supabase, signInWithGoogle, signOut } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from '@/store/uiStore'
 import type { Profile } from '@/types/database'
 
-export const useAuth = () => {
-  const {
-    user,
-    session,
-    profile,
-    isLoading,
-    isInitialized,
-    setUser,
-    setSession,
-    setProfile,
-    setLoading,
-    setInitialized,
-    reset,
-  } = useAuthStore()
-
-  return {
-    user,
-    session,
-    profile,
-    isLoading,
-    isInitialized,
-    isAuthenticated: !!user,
-    setProfile,
-    reset,
-  }
-}
-
-// App seviyesinde bir kez kullanılacak
-export const useAuthListener = () => {
+export function useAuthInit() {
   const { setUser, setSession, setProfile, setLoading, setInitialized, reset } =
     useAuthStore()
 
   useEffect(() => {
     // Mevcut oturumu al
-    const initAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-
-        if (session?.user) {
-          setSession(session)
-          setUser(session.user)
-          await fetchProfile(session.user.id)
-        }
-      } catch (err) {
-        console.error('Auth başlatma hatası:', err)
-      } finally {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+      setUser(session?.user ?? null)
+      if (session?.user) {
+        fetchProfile(session.user.id)
+      } else {
         setLoading(false)
         setInitialized(true)
       }
-    }
+    })
 
-    initAuth()
-
-    // Auth state değişikliklerini dinle
+    // Auth değişikliklerini dinle
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (_event, session) => {
         setSession(session)
         setUser(session?.user ?? null)
-
         if (session?.user) {
           await fetchProfile(session.user.id)
         } else {
-          setProfile(null)
-          if (event === 'SIGNED_OUT') {
-            reset()
-          }
+          reset()
+          setInitialized(true)
         }
-        setLoading(false)
       }
     )
 
     return () => subscription.unsubscribe()
   }, [])
 
-  const fetchProfile = async (userId: string) => {
+  async function fetchProfile(userId: string) {
+    setLoading(true)
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
@@ -87,55 +47,35 @@ export const useAuthListener = () => {
       .single()
 
     if (error) {
-      console.error('Profil yükleme hatası:', error)
-      return
+      toast.error('Profil yüklenemedi.')
+    } else {
+      setProfile(data as Profile)
     }
-
-    setProfile(data as Profile)
+    setLoading(false)
+    setInitialized(true)
   }
 }
 
-// Oturumu gerektiren sayfalarda kullan
-export const useRequireAuth = (redirectTo = '/giris') => {
-  const { isAuthenticated, isInitialized } = useAuth()
-  const navigate = useNavigate()
+export function useAuth() {
+  const { user, session, profile, isLoading } = useAuthStore()
 
-  useEffect(() => {
-    if (isInitialized && !isAuthenticated) {
-      navigate(redirectTo, { replace: true })
-    }
-  }, [isAuthenticated, isInitialized, navigate, redirectTo])
-
-  return { isAuthenticated, isInitialized }
-}
-
-// Giriş sayfasında (zaten giriş yaptıysa ana sayfaya yönlendir)
-export const useRedirectIfAuthenticated = (redirectTo = '/ana-sayfa') => {
-  const { isAuthenticated, isInitialized } = useAuth()
-  const navigate = useNavigate()
-
-  useEffect(() => {
-    if (isInitialized && isAuthenticated) {
-      navigate(redirectTo, { replace: true })
-    }
-  }, [isAuthenticated, isInitialized, navigate, redirectTo])
-}
-
-// Oturum açma işlemi hook'u
-export const useSignOut = () => {
-  const { reset } = useAuthStore()
-  const navigate = useNavigate()
-
-  const signOut = async () => {
-    try {
-      await supabase.auth.signOut()
-      reset()
-      navigate('/giris', { replace: true })
-      toast.success('Çıkış yapıldı.')
-    } catch {
-      toast.error('Çıkış yapılırken bir hata oluştu.')
-    }
+  const logout = async () => {
+    const { error } = await signOut()
+    if (error) toast.error('Çıkış yapılamadı.')
   }
 
-  return { signOut }
+  const loginWithGoogle = async () => {
+    const { error } = await signInWithGoogle()
+    if (error) toast.error('Google ile giriş başarısız.')
+  }
+
+  return {
+    user,
+    session,
+    profile,
+    isLoading,
+    isAuthenticated: !!user,
+    logout,
+    loginWithGoogle,
+  }
 }

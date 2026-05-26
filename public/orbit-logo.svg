@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Dış halka -->
+  <circle cx="16" cy="16" r="14" stroke="#E8C547" stroke-width="2"/>
+  <!-- İç yörünge çizgisi -->
+  <ellipse cx="16" cy="16" rx="7" ry="4" stroke="#E8C547" stroke-width="1.5" stroke-dasharray="3 2" transform="rotate(-30 16 16)"/>
+  <!-- Merkez nokta -->
+  <circle cx="16" cy="16" r="2.5" fill="#E8C547"/>
+  <!-- Gezegen noktası -->
+  <circle cx="22" cy="10" r="1.5" fill="#E8C547"/>
+</svg>

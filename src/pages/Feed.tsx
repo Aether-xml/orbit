@@ -1,229 +1,236 @@
-import { useState, useMemo, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Clock, Sparkles, RefreshCw } from 'lucide-react'
-import { motion } from 'framer-motion'
-import { PostComposer } from '@/components/post/PostComposer'
-import { PostCard } from '@/components/post/PostCard'
-import { PostCardSkeleton } from '@/components/ui/Skeleton'
-import { Button } from '@/components/ui/Button'
-import { StoryBar } from '@/components/story/StoryBar'
-import { useFeed, type FeedType, type PostWithProfile } from '@/hooks/usePosts'
-import { useInfiniteScroll } from '@/hooks/useInfiniteScroll'
+import { Users, Globe } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { supabase } from '@/lib/supabase'
+import { useAuthStore } from '@/store/authStore'
+import type { PostWithAuthor } from '@/types/database'
+import PostComposer from '@/components/post/PostComposer'
+import PostCard from '@/components/post/PostCard'
+import StoriesBar from '@/components/stories/StoriesBar'
+import { PostSkeleton } from '@/components/ui/Skeleton'
 
-export const Feed = () => {
-  const [feedType, setFeedType] = useState<FeedType>('chronological')
+const PAGE_SIZE = 20
+
+type Tab = 'following' | 'explore'
+
+type UserInteractions = {
+  likedIds: Set<string>
+  repostedIds: Set<string>
+  bookmarkedIds: Set<string>
+}
+
+async function fetchInteractions(userId: string): Promise<UserInteractions> {
+  const [{ data: likes }, { data: reposts }, { data: bookmarks }] = await Promise.all([
+    supabase.from('likes').select('target_id').eq('user_id', userId).eq('target_type', 'post'),
+    supabase.from('reposts').select('post_id').eq('user_id', userId),
+    supabase.from('bookmarks').select('target_id').eq('user_id', userId).eq('target_type', 'post'),
+  ])
+  return {
+    likedIds: new Set(likes?.map((l) => l.target_id) ?? []),
+    repostedIds: new Set(reposts?.map((r) => r.post_id) ?? []),
+    bookmarkedIds: new Set(bookmarks?.map((b) => b.target_id) ?? []),
+  }
+}
+
+async function fetchFeedPage(tab: Tab, userId: string, pageParam: number): Promise<PostWithAuthor[]> {
+  let userIds: string[] = [userId]
+
+  if (tab === 'following') {
+    const { data: follows } = await supabase
+      .from('follows')
+      .select('following_id')
+      .eq('follower_id', userId)
+    userIds = [userId, ...(follows?.map((f) => f.following_id) ?? [])]
+  }
+
+  const query = supabase
+    .from('posts')
+    .select('*, profiles!inner(id, username, display_name, avatar_url, is_verified, is_nova_plus, selected_badge)')
+    .is('deleted_at', null)
+    .is('reply_to_id', null)
+    .order('created_at', { ascending: false })
+    .range(pageParam, pageParam + PAGE_SIZE - 1)
+
+  if (tab === 'following') {
+    const { data, error } = await query.in('user_id', userIds)
+    if (error) throw error
+    return (data ?? []) as unknown as PostWithAuthor[]
+  } else {
+    const { data, error } = await query
+    if (error) throw error
+    return (data ?? []) as unknown as PostWithAuthor[]
+  }
+}
+
+export default function Feed() {
+  const { user } = useAuthStore()
+  const [tab, setTab] = useState<Tab>('following')
   const parentRef = useRef<HTMLDivElement>(null)
 
-  const {
-    data,
-    isLoading,
-    isError,
-    hasNextPage,
-    isFetchingNextPage,
-    fetchNextPage,
-    refetch,
-    isFetching,
-  } = useFeed(feedType)
-
-  const posts = useMemo(
-    () => data?.pages.flatMap((page) => page.posts) ?? [],
-    [data]
-  )
-
-  const { sentinelRef } = useInfiniteScroll({
-    hasNextPage: !!hasNextPage,
-    isFetchingNextPage,
-    fetchNextPage,
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteQuery({
+    queryKey: ['feed', tab, user?.id],
+    queryFn: ({ pageParam }) => fetchFeedPage(tab, user!.id, pageParam as number),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      if (lastPage.length < PAGE_SIZE) return undefined
+      return allPages.reduce((sum, page) => sum + page.length, 0)
+    },
+    enabled: !!user?.id,
+    staleTime: 1000 * 60,
   })
 
-  // TanStack Virtual
+  const { data: interactions } = useQuery({
+    queryKey: ['user-interactions', user?.id],
+    queryFn: () => fetchInteractions(user!.id),
+    enabled: !!user?.id,
+    staleTime: 1000 * 60,
+  })
+
+  // Blok ve mute listesi — feed'den filtrele
+  const { data: excludedIds } = useQuery({
+    queryKey: ['excluded-ids', user?.id],
+    queryFn: async () => {
+      const [{ data: blocked }, { data: muted }] = await Promise.all([
+        supabase.from('blocks').select('blocked_id').eq('blocker_id', user!.id),
+        supabase.from('mutes').select('muted_id').eq('muter_id', user!.id),
+      ])
+      return new Set([
+        ...(blocked?.map((b) => b.blocked_id) ?? []),
+        ...(muted?.map((m) => m.muted_id) ?? []),
+      ])
+    },
+    enabled: !!user?.id,
+    staleTime: 1000 * 30,
+  })
+
+  const posts = (data?.pages.flat() ?? []).filter(
+    (p) => !excludedIds?.has(p.user_id)
+  )
+
+  // TanStack Virtual — window scroll (AppLayout'ta overflow-y-auto yok, scroll window üzerinden)
   const virtualizer = useVirtualizer({
-    count: posts.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 120,
+    count: hasNextPage ? posts.length + 1 : posts.length,
+    getScrollElement: () => document.documentElement,
+    estimateSize: () => 160,
     overscan: 5,
   })
 
-  return (
-    <div>
-      {/* ── Başlık ── */}
-      <div className="sticky top-0 z-30 bg-[var(--bg-base)]/95 border-b border-[var(--border)]">
-        <div className="flex items-center justify-between px-4 py-3">
-          <h1 className="text-base font-semibold text-[var(--text-primary)]">
-            Ana Sayfa
-          </h1>
-          <button
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="p-2 rounded-[var(--radius-full)] text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-40"
-            aria-label="Yenile"
-          >
-            <RefreshCw
-              size={16}
-              className={isFetching ? 'animate-spin' : ''}
-            />
-          </button>
-        </div>
+  const virtualItems = virtualizer.getVirtualItems()
 
-        {/* Feed toggle */}
-        <FeedToggle feedType={feedType} onChange={setFeedType} />
+  // Load more: son virtual item görünürdeyse sonraki sayfayı getir
+  useEffect(() => {
+    const lastItem = virtualItems.at(-1)
+    if (!lastItem) return
+    if (lastItem.index >= posts.length - 1 && hasNextPage && !isFetchingNextPage) {
+      void fetchNextPage()
+    }
+  }, [virtualItems, hasNextPage, isFetchingNextPage, fetchNextPage, posts.length])
+
+  return (
+    <div className="min-h-dvh">
+      {/* Sticky header with tabs */}
+      <div className="sticky top-0 z-10 bg-bg-base/80 backdrop-blur-md border-b border-line">
+        <div className="flex">
+          {(['following', 'explore'] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTab(t)}
+              className={cn(
+                'flex-1 py-3 text-sm font-medium transition-default relative',
+                tab === t ? 'text-text-primary' : 'text-text-muted hover:text-text-secondary hover:bg-bg-overlay'
+              )}
+            >
+              {t === 'following' ? 'Takip Ettiklerin' : 'Keşfet'}
+              {tab === t && (
+                <span className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-accent rounded-full" />
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* ── Hikayeler ── */}
-      <StoryBar />
+      {/* Stories */}
+      <StoriesBar />
 
-      {/* ── Post Composer ── */}
+      {/* Composer */}
       <PostComposer />
 
-      {/* ── İçerik ── */}
-      {isError ? (
-        <FeedError onRetry={() => refetch()} />
-      ) : isLoading ? (
-        <FeedSkeleton />
+      {/* Posts */}
+      {isLoading ? (
+        Array.from({ length: 5 }).map((_, i) => <PostSkeleton key={i} />)
       ) : posts.length === 0 ? (
-        <FeedEmpty feedType={feedType} />
+        <EmptyFeed tab={tab} />
       ) : (
         <div ref={parentRef}>
-          {/* Sanallaştırılmış liste */}
+          {/* Virtual scroll container */}
           <div
             style={{
               height: `${virtualizer.getTotalSize()}px`,
               position: 'relative',
             }}
           >
-            {virtualizer.getVirtualItems().map((virtualItem) => {
-              const post = posts[virtualItem.index]
-              if (!post) return null
+            {virtualItems.map((virtualRow) => {
+              const isLoaderRow = virtualRow.index === posts.length
+              const post = posts[virtualRow.index]
 
               return (
                 <div
-                  key={virtualItem.key}
-                  data-index={virtualItem.index}
+                  key={virtualRow.index}
+                  data-index={virtualRow.index}
                   ref={virtualizer.measureElement}
                   style={{
                     position: 'absolute',
                     top: 0,
                     left: 0,
                     width: '100%',
-                    transform: `translateY(${virtualItem.start}px)`,
+                    transform: `translateY(${virtualRow.start}px)`,
                   }}
                 >
-                  <PostCard post={post} />
+                  {isLoaderRow ? (
+                    <div className="py-4 flex justify-center">
+                      {isFetchingNextPage ? (
+                        <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                      ) : !hasNextPage ? (
+                        <p className="text-center text-text-muted text-sm py-4">Tüm gönderiler yüklendi</p>
+                      ) : null}
+                    </div>
+                  ) : post ? (
+                    <PostCard
+                      post={post}
+                      isLiked={interactions?.likedIds.has(post.id) ?? false}
+                      isReposted={interactions?.repostedIds.has(post.id) ?? false}
+                      isBookmarked={interactions?.bookmarkedIds.has(post.id) ?? false}
+                    />
+                  ) : null}
                 </div>
               )
             })}
           </div>
-
-          {/* Infinite scroll sentinel */}
-          <div ref={sentinelRef} className="h-4" />
-
-          {/* Yükleniyor göstergesi */}
-          {isFetchingNextPage && (
-            <div className="py-4 flex justify-center">
-              <div className="flex gap-1.5">
-                {[0, 1, 2].map((i) => (
-                  <motion.div
-                    key={i}
-                    className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]"
-                    animate={{ opacity: [0.3, 1, 0.3] }}
-                    transition={{
-                      duration: 0.8,
-                      repeat: Infinity,
-                      delay: i * 0.15,
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Son */}
-          {!hasNextPage && posts.length > 0 && (
-            <div className="py-8 text-center">
-              <p className="text-xs text-[var(--text-muted)]">
-                Hepsi bu! 🪐
-              </p>
-            </div>
-          )}
         </div>
       )}
     </div>
   )
 }
 
-// ── Feed Toggle ───────────────────────────────────────────
-interface FeedToggleProps {
-  feedType: FeedType
-  onChange: (type: FeedType) => void
+function EmptyFeed({ tab }: { tab: Tab }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
+      <div className="w-16 h-16 rounded-full bg-bg-elevated flex items-center justify-center mb-4">
+        {tab === 'following'
+          ? <Users size={28} className="text-text-muted" />
+          : <Globe size={28} className="text-text-muted" />}
+      </div>
+      <h3 className="text-text-primary font-semibold mb-1">
+        {tab === 'following' ? 'Henüz bir şey yok' : 'Keşfedecek içerik bulunamadı'}
+      </h3>
+      <p className="text-text-muted text-sm max-w-xs">
+        {tab === 'following'
+          ? 'Takip ettiğin kişilerin gönderileri burada görünecek.'
+          : 'Yeni içerikler yakında burada olacak.'}
+      </p>
+    </div>
+  )
 }
-
-const FeedToggle = ({ feedType, onChange }: FeedToggleProps) => (
-  <div className="flex border-b border-[var(--border)]">
-    {(
-      [
-        { key: 'chronological', label: 'Takip', icon: Clock },
-        { key: 'explore', label: 'Keşfet', icon: Sparkles },
-      ] as { key: FeedType; label: string; icon: React.ElementType }[]
-    ).map(({ key, label, icon: Icon }) => (
-      <button
-        key={key}
-        onClick={() => onChange(key)}
-        className={cn(
-          'flex-1 flex items-center justify-center gap-2',
-          'py-3 text-sm font-medium',
-          'relative transition-colors duration-[var(--transition)]',
-          feedType === key
-            ? 'text-[var(--text-primary)]'
-            : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]'
-        )}
-      >
-        <Icon size={15} />
-        {label}
-        {feedType === key && (
-          <motion.div
-            layoutId="feed-indicator"
-            className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--accent)]"
-            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-          />
-        )}
-      </button>
-    ))}
-  </div>
-)
-
-// ── Durum Bileşenleri ─────────────────────────────────────
-const FeedSkeleton = () => (
-  <div className="divide-y divide-[var(--border)]">
-    {Array.from({ length: 5 }).map((_, i) => (
-      <PostCardSkeleton key={i} />
-    ))}
-  </div>
-)
-
-const FeedError = ({ onRetry }: { onRetry: () => void }) => (
-  <div className="py-16 flex flex-col items-center gap-4">
-    <p className="text-[var(--text-secondary)] text-sm">
-      Feed yüklenirken bir hata oluştu.
-    </p>
-    <Button variant="outline" size="sm" onClick={onRetry}>
-      Tekrar Dene
-    </Button>
-  </div>
-)
-
-const FeedEmpty = ({ feedType }: { feedType: FeedType }) => (
-  <div className="py-16 flex flex-col items-center gap-3 px-6 text-center">
-    <span className="text-4xl">🪐</span>
-    <h3 className="text-base font-semibold text-[var(--text-primary)]">
-      {feedType === 'chronological'
-        ? 'Takip ettiğin kimse yok'
-        : 'Keşfedecek içerik bulunamadı'}
-    </h3>
-    <p className="text-sm text-[var(--text-muted)] max-w-xs">
-      {feedType === 'chronological'
-        ? 'Keşfet sekmesinden ilginç insanları bul ve takip et.'
-        : 'Yakında burada içerikler görünecek.'}
-    </p>
-  </div>
-)

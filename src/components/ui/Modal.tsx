@@ -1,108 +1,106 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-interface ModalProps {
-  isOpen: boolean
+type ModalSize = 'sm' | 'md' | 'lg' | 'full'
+
+type ModalProps = {
+  open: boolean
   onClose: () => void
   title?: string
-  children: ReactNode
-  size?: 'sm' | 'md' | 'lg' | 'xl'
-  showCloseButton?: boolean
+  size?: ModalSize
   className?: string
+  children: React.ReactNode
+  hideClose?: boolean
 }
 
-const sizeStyles = {
-  sm: 'max-w-sm',
-  md: 'max-w-md',
-  lg: 'max-w-lg',
-  xl: 'max-w-xl',
+const sizeClasses: Record<ModalSize, string> = {
+  sm:   'max-w-sm',
+  md:   'max-w-lg',
+  lg:   'max-w-2xl',
+  full: 'max-w-full mx-4',
 }
 
-export const Modal = ({
-  isOpen,
+export default function Modal({
+  open,
   onClose,
   title,
-  children,
   size = 'md',
-  showCloseButton = true,
   className,
-}: ModalProps) => {
-  // ESC tuşu ile kapat
+  children,
+  hideClose = false,
+}: ModalProps) {
+  const overlayRef = useRef<HTMLDivElement>(null)
+
+  // ESC ile kapat
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
-    if (isOpen) {
-      document.addEventListener('keydown', handleKeyDown)
+    if (open) document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [open, onClose])
+
+  // Scroll kilitle
+  useEffect(() => {
+    if (open) {
       document.body.style.overflow = 'hidden'
-    }
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown)
+    } else {
       document.body.style.overflow = ''
     }
-  }, [isOpen, onClose])
+    return () => { document.body.style.overflow = '' }
+  }, [open])
 
   return createPortal(
     <AnimatePresence>
-      {isOpen && (
+      {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          {/* Backdrop */}
+          {/* Overlay */}
           <motion.div
+            ref={overlayRef}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="absolute inset-0 bg-black/70"
+            className="absolute inset-0 bg-black/60"
             onClick={onClose}
           />
 
-          {/* Modal */}
+          {/* Panel */}
           <motion.div
             initial={{ opacity: 0, scale: 0.96, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: 8 }}
-            transition={{ duration: 0.15, ease: 'easeOut' }}
+            exit={{ opacity: 0, scale: 0.96, y: 4 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
             className={cn(
-              'relative w-full z-10',
-              'bg-[var(--bg-surface)]',
-              'border border-[var(--border)]',
-              'rounded-[var(--radius-xl)]',
-              'shadow-[var(--shadow-lg)]',
-              'max-h-[90vh] overflow-y-auto',
-              sizeStyles[size],
+              'relative w-full bg-bg-elevated border border-line rounded-xl shadow-lg overflow-hidden',
+              sizeClasses[size],
               className
             )}
           >
             {/* Header */}
-            {(title || showCloseButton) && (
-              <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
+            {(title || !hideClose) && (
+              <div className="flex items-center justify-between px-5 py-4 border-b border-line">
                 {title && (
-                  <h2 className="text-base font-semibold text-[var(--text-primary)]">
-                    {title}
-                  </h2>
+                  <h2 className="text-text-primary font-semibold">{title}</h2>
                 )}
-                {showCloseButton && (
+                {!hideClose && (
                   <button
+                    type="button"
                     onClick={onClose}
-                    className={cn(
-                      'p-1.5 rounded-[var(--radius-md)]',
-                      'text-[var(--text-muted)]',
-                      'hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]',
-                      'transition-colors duration-[var(--transition)]',
-                      !title && 'ml-auto'
-                    )}
+                    className="ml-auto text-text-muted hover:text-text-primary transition-default p-1 rounded-md hover:bg-bg-overlay"
+                    aria-label="Kapat"
                   >
-                    <X size={18} />
+                    <X size={16} />
                   </button>
                 )}
               </div>
             )}
 
-            {/* Content */}
-            <div>{children}</div>
+            {/* İçerik */}
+            <div className="overflow-y-auto max-h-[80dvh]">{children}</div>
           </motion.div>
         </div>
       )}

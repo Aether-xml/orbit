@@ -1,711 +1,567 @@
-import { useState, useEffect, useRef } from 'react'
-import { useSearchParams, Link, useNavigate } from 'react-router-dom'
-import { Search, X, TrendingUp, Users, Globe, Hash } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Avatar } from '@/components/ui/Avatar'
-import { Button } from '@/components/ui/Button'
-import { Skeleton } from '@/components/ui/Skeleton'
-import { PostCard } from '@/components/post/PostCard'
-import { PostCardSkeleton } from '@/components/ui/Skeleton'
-import { Badge } from '@/components/ui/Badge'
-import {
-  useSearchProfiles,
-  useSearchPosts,
-  useSearchHashtags,
-  useSearchServers,
-  useTrendingHashtags,
-  useSuggestedProfiles,
-  useSuggestedServers,
-  useFollow,
-  type SearchTab,
-} from '@/hooks/useSearch'
-import { formatCount, cn, debounce } from '@/lib/utils'
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Search, TrendingUp, UserPlus, Hash, Globe } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { formatCount } from '@/lib/utils'
+import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
-import type { Profile, Hashtag, Server } from '@/types/database'
-import type { BadgeKey } from '@/types/user'
-import type { PostWithProfile } from '@/hooks/usePosts'
+import { toast } from '@/store/uiStore'
+import { useDebounce } from '@/hooks/useDebounce'
+import type { PostWithAuthor, Server } from '@/types/database'
+import Avatar from '@/components/ui/Avatar'
+import PostCard from '@/components/post/PostCard'
+import { VerifiedIcon } from '@/components/ui/Badge'
+import { PostSkeleton } from '@/components/ui/Skeleton'
+import Skeleton from '@/components/ui/Skeleton'
 
-export const Explore = () => {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const initialQuery = searchParams.get('q') ?? ''
-  const [inputValue, setInputValue] = useState(initialQuery)
-  const [query, setQuery] = useState(initialQuery)
-  const [activeTab, setActiveTab] = useState<SearchTab>('profiles')
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  // Debounced arama
-  const debouncedSetQuery = useRef(
-    debounce((val: string) => {
-      setQuery(val)
-      if (val) {
-        setSearchParams({ q: val }, { replace: true })
-      } else {
-        setSearchParams({}, { replace: true })
-      }
-    }, 350)
-  ).current
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setInputValue(e.target.value)
-    debouncedSetQuery(e.target.value)
-  }
-
-  const clearSearch = () => {
-    setInputValue('')
-    setQuery('')
-    setSearchParams({}, { replace: true })
-    inputRef.current?.focus()
-  }
-
-  const isSearching = query.trim().length >= 1
-
-  return (
-    <div>
-      {/* Başlık + Arama */}
-      <div className="sticky top-0 z-30 bg-[var(--bg-base)]/95 border-b border-[var(--border)] px-4 py-3 space-y-3">
-        <h1 className="text-base font-semibold text-[var(--text-primary)]">
-          Keşfet
-        </h1>
-
-        {/* Arama kutusu */}
-        <div className="relative">
-          <Search
-            size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
-          />
-          <input
-            ref={inputRef}
-            value={inputValue}
-            onChange={handleInputChange}
-            placeholder="Kişi, post, hashtag veya sunucu ara..."
-            className={cn(
-              'w-full h-10 pl-9 pr-9',
-              'bg-[var(--bg-surface)]',
-              'border border-[var(--border)] rounded-[var(--radius-full)]',
-              'text-sm text-[var(--text-primary)]',
-              'placeholder:text-[var(--text-muted)]',
-              'outline-none',
-              'focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-border)]',
-              'transition-colors duration-[var(--transition)]'
-            )}
-          />
-          {inputValue && (
-            <button
-              onClick={clearSearch}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-            >
-              <X size={15} />
-            </button>
-          )}
-        </div>
-
-        {/* Sekme seçici (arama aktifken) */}
-        {isSearching && (
-          <SearchTabs activeTab={activeTab} onChange={setActiveTab} />
-        )}
-      </div>
-
-      {/* İçerik */}
-      <AnimatePresence mode="wait">
-        {isSearching ? (
-          <motion.div
-            key="search-results"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-          >
-            <SearchResults
-              query={query}
-              activeTab={activeTab}
-            />
-          </motion.div>
-        ) : (
-          <motion.div
-            key="discover"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-          >
-            <DiscoverContent />
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  )
+type UserResult = {
+  id: string
+  username: string
+  display_name: string
+  avatar_url: string | null
+  is_verified: boolean
+  is_nova_plus: boolean
+  follower_count: number
 }
 
-// ── Sekme Seçici ──────────────────────────────────────────
-const TABS: { key: SearchTab; label: string; icon: React.ElementType }[] = [
-  { key: 'profiles', label: 'Kişiler', icon: Users },
-  { key: 'posts', label: 'Postlar', icon: Search },
-  { key: 'hashtags', label: 'Hashtagler', icon: Hash },
-  { key: 'servers', label: 'Sunucular', icon: Globe },
+type ServerResult = Pick<Server, 'id' | 'name' | 'description' | 'avatar_url' | 'member_count'>
+
+type SearchTab = 'users' | 'posts' | 'hashtags' | 'servers'
+
+const SEARCH_TABS: { id: SearchTab; label: string }[] = [
+  { id: 'users',    label: 'Kişiler'    },
+  { id: 'posts',    label: 'Gönderiler' },
+  { id: 'hashtags', label: 'Etiketler'  },
+  { id: 'servers',  label: 'Sunucular'  },
 ]
 
-const SearchTabs = ({
-  activeTab,
-  onChange,
-}: {
-  activeTab: SearchTab
-  onChange: (tab: SearchTab) => void
-}) => (
-  <div className="flex gap-1 overflow-x-auto scrollbar-none">
-    {TABS.map(({ key, label, icon: Icon }) => (
-      <button
-        key={key}
-        onClick={() => onChange(key)}
-        className={cn(
-          'flex items-center gap-1.5 px-3 py-1.5',
-          'rounded-[var(--radius-full)]',
-          'text-xs font-medium whitespace-nowrap',
-          'transition-all duration-[var(--transition)]',
-          activeTab === key
-            ? 'bg-[var(--accent)] text-[var(--text-inverse)]'
-            : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border)] hover:border-[var(--text-muted)]'
-        )}
-      >
-        <Icon size={13} />
-        {label}
-      </button>
-    ))}
-  </div>
-)
+// ── Interaction fetch ────────────────────────────────
+type UserInteractions = { likedIds: Set<string>; repostedIds: Set<string>; bookmarkedIds: Set<string> }
 
-// ── Arama Sonuçları ───────────────────────────────────────
-const SearchResults = ({
-  query,
-  activeTab,
-}: {
-  query: string
-  activeTab: SearchTab
-}) => {
-  const { toggleFollow, isFollowing, isPending, initFollowState } = useFollow()
-  const { data: profiles, isLoading: loadingProfiles } = useSearchProfiles(
-    activeTab === 'profiles' ? query : ''
-  )
-  const { data: posts, isLoading: loadingPosts } = useSearchPosts(
-    activeTab === 'posts' ? query : ''
-  )
-  const { data: hashtags, isLoading: loadingHashtags } = useSearchHashtags(
-    activeTab === 'hashtags' ? query : ''
-  )
-  const { data: servers, isLoading: loadingServers } = useSearchServers(
-    activeTab === 'servers' ? query : ''
-  )
+async function fetchInteractions(userId: string): Promise<UserInteractions> {
+  const [{ data: likes }, { data: reposts }, { data: bookmarks }] = await Promise.all([
+    supabase.from('likes').select('target_id').eq('user_id', userId).eq('target_type', 'post'),
+    supabase.from('reposts').select('post_id').eq('user_id', userId),
+    supabase.from('bookmarks').select('target_id').eq('user_id', userId).eq('target_type', 'post'),
+  ])
+  return {
+    likedIds:      new Set(likes?.map((l) => l.target_id) ?? []),
+    repostedIds:   new Set(reposts?.map((r) => r.post_id) ?? []),
+    bookmarkedIds: new Set(bookmarks?.map((b) => b.target_id) ?? []),
+  }
+}
 
-  // Profil follow state'ini başlat
+// ── Component ────────────────────────────────────────
+
+export default function Explore() {
+  const { user } = useAuthStore()
+  const [query, setQuery] = useState('')
+  const [searchTab, setSearchTab] = useState<SearchTab>('users')
+  const debouncedQuery = useDebounce(query, 400)
+  const hasQuery = debouncedQuery.trim().length >= 2
+
+  // Mevcut kullanıcının takip ettiği kişiler
+  const { data: followingIds } = useQuery({
+    queryKey: ['my-following-ids', user?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('follows')
+        .select('following_id')
+        .eq('follower_id', user!.id)
+      return new Set((data ?? []).map((f) => f.following_id))
+    },
+    enabled: !!user?.id,
+    staleTime: 1000 * 30,
+  })
+
+  const { data: interactions } = useQuery({
+    queryKey: ['user-interactions', user?.id],
+    queryFn: () => fetchInteractions(user!.id),
+    enabled: !!user?.id,
+    staleTime: 1000 * 60,
+  })
+
+  // ── Arama sorguları ─────────────────────────────────
+
+  const { data: userResults, isLoading: usersLoading } = useQuery({
+    queryKey: ['search-users', debouncedQuery],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url, is_verified, is_nova_plus, follower_count')
+        .or(`username.ilike.%${debouncedQuery}%,display_name.ilike.%${debouncedQuery}%`)
+        .order('follower_count', { ascending: false })
+        .limit(10)
+      return (data ?? []) as UserResult[]
+    },
+    enabled: hasQuery,
+  })
+
+  const { data: postResults, isLoading: postsLoading } = useQuery({
+    queryKey: ['search-posts', debouncedQuery],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('posts')
+        .select('*, profiles!inner(id, username, display_name, avatar_url, is_verified, is_nova_plus, selected_badge)')
+        .ilike('content', `%${debouncedQuery}%`)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(20)
+      return (data ?? []) as unknown as PostWithAuthor[]
+    },
+    enabled: hasQuery,
+  })
+
+  const { data: hashtagResults, isLoading: hashtagsLoading } = useQuery({
+    queryKey: ['search-hashtags', debouncedQuery],
+    queryFn: async () => {
+      const tag = debouncedQuery.replace(/^#/, '').toLowerCase()
+      const { data } = await supabase
+        .from('hashtags')
+        .select('id, name, post_count')
+        .ilike('name', `%${tag}%`)
+        .order('post_count', { ascending: false })
+        .limit(20)
+      return data ?? []
+    },
+    enabled: hasQuery,
+  })
+
+  const { data: serverResults, isLoading: serversLoading } = useQuery({
+    queryKey: ['search-servers', debouncedQuery],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('servers')
+        .select('id, name, description, avatar_url, member_count')
+        .eq('is_public', true)
+        .ilike('name', `%${debouncedQuery}%`)
+        .order('member_count', { ascending: false })
+        .limit(10)
+      return (data ?? []) as ServerResult[]
+    },
+    enabled: hasQuery,
+  })
+
+  // ── Discovery sorguları ────────────────────────────
+
+  const { data: trendingHashtags, isLoading: trendingLoading } = useQuery({
+    queryKey: ['trending-hashtags'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('hashtags')
+        .select('id, name, post_count')
+        .order('post_count', { ascending: false })
+        .limit(15)
+      return data ?? []
+    },
+    staleTime: 1000 * 60 * 5,
+  })
+
+  const { data: suggestedUsers, isLoading: suggestedLoading } = useQuery({
+    queryKey: ['suggested-users', user?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url, is_verified, is_nova_plus, follower_count')
+        .neq('id', user!.id)
+        .order('follower_count', { ascending: false })
+        .limit(12)
+      return (data ?? []) as UserResult[]
+    },
+    enabled: !!user?.id,
+    staleTime: 1000 * 60 * 5,
+  })
+
+  const { data: suggestedServers, isLoading: suggestedServersLoading } = useQuery({
+    queryKey: ['suggested-servers'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('servers')
+        .select('id, name, description, avatar_url, member_count')
+        .eq('is_public', true)
+        .order('member_count', { ascending: false })
+        .limit(6)
+      return (data ?? []) as ServerResult[]
+    },
+    staleTime: 1000 * 60 * 5,
+  })
+
+  // Arama yapıldığında ilk sekmeye dön
   useEffect(() => {
-    if (profiles && profiles.length > 0) {
-      initFollowState(profiles.map((p) => p.id))
-    }
-  }, [profiles, initFollowState])
-
-  if (activeTab === 'profiles') {
-    return (
-      <ProfileResults
-        profiles={profiles ?? []}
-        isLoading={loadingProfiles}
-        query={query}
-        onFollow={toggleFollow}
-        isFollowing={isFollowing}
-        isPending={isPending}
-      />
-    )
-  }
-
-  if (activeTab === 'posts') {
-    return (
-      <PostResults
-        posts={posts ?? []}
-        isLoading={loadingPosts}
-        query={query}
-      />
-    )
-  }
-
-  if (activeTab === 'hashtags') {
-    return (
-      <HashtagResults
-        hashtags={hashtags ?? []}
-        isLoading={loadingHashtags}
-        query={query}
-      />
-    )
-  }
-
-  if (activeTab === 'servers') {
-    return (
-      <ServerResults
-        servers={servers ?? []}
-        isLoading={loadingServers}
-        query={query}
-      />
-    )
-  }
-
-  return null
-}
-
-// ── Profil Sonuçları ──────────────────────────────────────
-interface ProfileResultsProps {
-  profiles: Profile[]
-  isLoading: boolean
-  query: string
-  onFollow: (id: string, isPrivate: boolean) => void
-  isFollowing: (id: string) => boolean
-  isPending: (id: string) => boolean
-}
-
-const ProfileResults = ({
-  profiles,
-  isLoading,
-  query,
-  onFollow,
-  isFollowing,
-  isPending,
-}: ProfileResultsProps) => {
-  if (isLoading) return <ProfileListSkeleton />
-
-  if (profiles.length === 0) {
-    return <EmptyResult message={`"${query}" için kullanıcı bulunamadı.`} />
-  }
+    if (hasQuery) setSearchTab('users')
+  }, [debouncedQuery, hasQuery])
 
   return (
-    <div className="divide-y divide-[var(--border)]">
-      {profiles.map((profile) => (
-        <ProfileRow
-          key={profile.id}
-          profile={profile}
-          isFollowing={isFollowing(profile.id)}
-          isPending={isPending(profile.id)}
-          onFollow={() => onFollow(profile.id, profile.is_private)}
-        />
-      ))}
-    </div>
-  )
-}
-
-// ── Profil Satırı ─────────────────────────────────────────
-interface ProfileRowProps {
-  profile: Profile
-  isFollowing: boolean
-  isPending: boolean
-  onFollow: () => void
-  showBio?: boolean
-}
-
-export const ProfileRow = ({
-  profile,
-  isFollowing,
-  isPending,
-  onFollow,
-  showBio = true,
-}: ProfileRowProps) => {
-  const navigate = useNavigate()
-  const currentUser = useAuthStore((s) => s.user)
-  const isOwn = currentUser?.id === profile.id
-
-  const followLabel = isFollowing
-    ? 'Takip Ediliyor'
-    : isPending
-    ? 'İstek Gönderildi'
-    : profile.is_private
-    ? 'İstek Gönder'
-    : 'Takip Et'
-
-  return (
-    <div
-      className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--bg-surface)] transition-colors cursor-pointer"
-      onClick={() => navigate(`/${profile.username}`)}
-    >
-      <Avatar
-        src={profile.avatar_url}
-        fallback={profile.display_name}
-        size="md"
-        isNova={profile.is_nova_plus}
-        className="shrink-0"
-      />
-
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <span className="text-sm font-semibold text-[var(--text-primary)] truncate">
-            {profile.display_name}
-          </span>
-          {profile.selected_badge && (
-            <Badge badgeKey={profile.selected_badge as BadgeKey} size="sm" />
-          )}
-          {profile.is_verified && (
-            <span className="text-[var(--info)] text-xs shrink-0">✓</span>
-          )}
-          {profile.is_private && (
-            <span className="text-[var(--text-muted)] text-xs shrink-0">🔒</span>
-          )}
+    <div className="min-h-dvh">
+      {/* Sticky search bar */}
+      <div className="sticky top-0 z-10 bg-bg-base/80 backdrop-blur-md border-b border-line px-4 py-3">
+        <div className="relative">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Kullanıcı, gönderi, etiket, sunucu ara..."
+            className="w-full bg-bg-surface border border-line rounded-full pl-9 pr-4 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none transition-default"
+          />
         </div>
-        <p className="text-xs text-[var(--text-muted)] truncate">
-          @{profile.username} · {formatCount(profile.follower_count)} takipçi
-        </p>
-        {showBio && profile.bio && (
-          <p className="text-xs text-[var(--text-secondary)] mt-0.5 line-clamp-1">
-            {profile.bio}
-          </p>
-        )}
       </div>
 
-      {!isOwn && (
-        <Button
-          size="sm"
-          variant={isFollowing || isPending ? 'outline' : 'primary'}
-          onClick={(e) => {
-            e.stopPropagation()
-            onFollow()
-          }}
-          className="shrink-0"
-        >
-          {followLabel}
-        </Button>
+      {hasQuery ? (
+        // ── Arama sonuçları ─────────────────────────
+        <div>
+          {/* Sekme seçici */}
+          <div className="flex border-b border-line px-1">
+            {SEARCH_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setSearchTab(tab.id)}
+                className={cn(
+                  'flex-1 py-3 text-xs font-medium transition-default relative',
+                  searchTab === tab.id
+                    ? 'text-text-primary'
+                    : 'text-text-muted hover:text-text-secondary hover:bg-bg-overlay'
+                )}
+              >
+                {tab.label}
+                {searchTab === tab.id && (
+                  <span className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-accent rounded-full" />
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Kişiler */}
+          {searchTab === 'users' && (
+            <section>
+              {usersLoading ? (
+                Array.from({ length: 4 }).map((_, i) => <UserSkeleton key={i} />)
+              ) : userResults?.length ? (
+                userResults.map((u) => (
+                  <UserCard
+                    key={u.id}
+                    user={u}
+                    currentUserId={user?.id}
+                    isFollowing={followingIds?.has(u.id) ?? false}
+                  />
+                ))
+              ) : (
+                <EmptyResult text="Kullanıcı bulunamadı" />
+              )}
+            </section>
+          )}
+
+          {/* Gönderiler */}
+          {searchTab === 'posts' && (
+            <section>
+              {postsLoading ? (
+                Array.from({ length: 3 }).map((_, i) => <PostSkeleton key={i} />)
+              ) : postResults?.length ? (
+                postResults.map((post) => (
+                  <PostCard
+                    key={post.id}
+                    post={post}
+                    isLiked={interactions?.likedIds.has(post.id) ?? false}
+                    isReposted={interactions?.repostedIds.has(post.id) ?? false}
+                    isBookmarked={interactions?.bookmarkedIds.has(post.id) ?? false}
+                  />
+                ))
+              ) : (
+                <EmptyResult text="Gönderi bulunamadı" />
+              )}
+            </section>
+          )}
+
+          {/* Etiketler */}
+          {searchTab === 'hashtags' && (
+            <section>
+              {hashtagsLoading ? (
+                Array.from({ length: 6 }).map((_, i) => <HashtagSkeleton key={i} />)
+              ) : hashtagResults?.length ? (
+                hashtagResults.map((tag) => (
+                  <HashtagRow key={tag.id} name={tag.name} postCount={tag.post_count} />
+                ))
+              ) : (
+                <EmptyResult text="Etiket bulunamadı" />
+              )}
+            </section>
+          )}
+
+          {/* Sunucular */}
+          {searchTab === 'servers' && (
+            <section>
+              {serversLoading ? (
+                Array.from({ length: 4 }).map((_, i) => <ServerSkeleton key={i} />)
+              ) : serverResults?.length ? (
+                serverResults.map((s) => (
+                  <ServerCard key={s.id} server={s} currentUserId={user?.id} />
+                ))
+              ) : (
+                <EmptyResult text="Sunucu bulunamadı" />
+              )}
+            </section>
+          )}
+        </div>
+      ) : (
+        // ── Keşfet ─────────────────────────────────
+        <div>
+          {/* Gündemde */}
+          <section>
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-line">
+              <TrendingUp size={16} className="text-accent" />
+              <h2 className="text-sm font-semibold text-text-primary">Gündemde</h2>
+            </div>
+            {trendingLoading
+              ? Array.from({ length: 8 }).map((_, i) => <HashtagSkeleton key={i} />)
+              : trendingHashtags?.map((tag) => (
+                  <HashtagRow key={tag.id} name={tag.name} postCount={tag.post_count} />
+                ))}
+          </section>
+
+          {/* Önerilen Kişiler */}
+          <section>
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-line">
+              <UserPlus size={16} className="text-accent" />
+              <h2 className="text-sm font-semibold text-text-primary">Önerilen Kişiler</h2>
+            </div>
+            {suggestedLoading
+              ? Array.from({ length: 4 }).map((_, i) => <UserSkeleton key={i} />)
+              : suggestedUsers?.map((u) => (
+                  <UserCard
+                    key={u.id}
+                    user={u}
+                    currentUserId={user?.id}
+                    isFollowing={followingIds?.has(u.id) ?? false}
+                  />
+                ))}
+          </section>
+
+          {/* Önerilen Sunucular */}
+          <section>
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-line">
+              <Globe size={16} className="text-accent" />
+              <h2 className="text-sm font-semibold text-text-primary">Önerilen Sunucular</h2>
+            </div>
+            {suggestedServersLoading
+              ? Array.from({ length: 3 }).map((_, i) => <ServerSkeleton key={i} />)
+              : suggestedServers?.map((s) => (
+                  <ServerCard key={s.id} server={s} currentUserId={user?.id} />
+                ))}
+          </section>
+        </div>
       )}
     </div>
   )
 }
 
-// ── Post Sonuçları ────────────────────────────────────────
-const PostResults = ({
-  posts,
-  isLoading,
-  query,
-}: {
-  posts: PostWithProfile[]
-  isLoading: boolean
-  query: string
-}) => {
-  if (isLoading) {
-    return (
-      <div className="divide-y divide-[var(--border)]">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <PostCardSkeleton key={i} />
-        ))}
-      </div>
-    )
-  }
+// ── HashtagRow ─────────────────────────────────────────
 
-  if (posts.length === 0) {
-    return <EmptyResult message={`"${query}" için post bulunamadı.`} />
-  }
-
-  return (
-    <div className="divide-y divide-[var(--border)]">
-      {posts.map((post) => (
-        <PostCard key={post.id} post={post} />
-      ))}
-    </div>
-  )
-}
-
-// ── Hashtag Sonuçları ─────────────────────────────────────
-const HashtagResults = ({
-  hashtags,
-  isLoading,
-  query,
-}: {
-  hashtags: Hashtag[]
-  isLoading: boolean
-  query: string
-}) => {
-  if (isLoading) return <HashtagListSkeleton />
-
-  if (hashtags.length === 0) {
-    return <EmptyResult message={`"${query}" için hashtag bulunamadı.`} />
-  }
-
-  return (
-    <div className="divide-y divide-[var(--border)]">
-      {hashtags.map((hashtag) => (
-        <HashtagRow key={hashtag.id} hashtag={hashtag} />
-      ))}
-    </div>
-  )
-}
-
-const HashtagRow = ({ hashtag }: { hashtag: Hashtag }) => (
-  <Link
-    to={`/kesif?q=%23${hashtag.name}`}
-    className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--bg-surface)] transition-colors"
-  >
-    <div className="w-10 h-10 rounded-[var(--radius-full)] bg-[var(--accent-muted)] border border-[var(--accent-border)] flex items-center justify-center shrink-0">
-      <Hash size={18} className="text-[var(--accent)]" />
-    </div>
-    <div>
-      <p className="text-sm font-semibold text-[var(--text-primary)]">
-        #{hashtag.name}
-      </p>
-      <p className="text-xs text-[var(--text-muted)]">
-        {formatCount(hashtag.post_count)} post
-      </p>
-    </div>
-  </Link>
-)
-
-// ── Sunucu Sonuçları ──────────────────────────────────────
-const ServerResults = ({
-  servers,
-  isLoading,
-  query,
-}: {
-  servers: Server[]
-  isLoading: boolean
-  query: string
-}) => {
-  if (isLoading) return <ServerListSkeleton />
-
-  if (servers.length === 0) {
-    return <EmptyResult message={`"${query}" için sunucu bulunamadı.`} />
-  }
-
-  return (
-    <div className="divide-y divide-[var(--border)]">
-      {servers.map((server) => (
-        <ServerRow key={server.id} server={server} />
-      ))}
-    </div>
-  )
-}
-
-const ServerRow = ({ server }: { server: Server }) => {
+function HashtagRow({ name, postCount }: { name: string; postCount: number }) {
   const navigate = useNavigate()
-
   return (
-    <div
-      className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--bg-surface)] transition-colors cursor-pointer"
-      onClick={() => navigate(`/sunucular/${server.id}`)}
+    <button
+      type="button"
+      onClick={() => navigate(`/etiket/${name}`)}
+      className="w-full flex items-center gap-3 px-4 py-3 border-b border-line hover:bg-bg-overlay transition-default text-left"
     >
-      <div className="w-10 h-10 rounded-[var(--radius-md)] bg-[var(--bg-elevated)] border border-[var(--border)] overflow-hidden shrink-0 flex items-center justify-center">
-        {server.avatar_url ? (
-          <img
-            src={server.avatar_url}
-            alt={server.name}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <Globe size={18} className="text-[var(--text-muted)]" />
-        )}
+      <div className="w-9 h-9 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
+        <Hash size={16} className="text-accent" />
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-[var(--text-primary)] truncate">
-          {server.name}
-        </p>
-        <p className="text-xs text-[var(--text-muted)]">
-          {formatCount(server.member_count)} üye
-        </p>
-        {server.description && (
-          <p className="text-xs text-[var(--text-secondary)] mt-0.5 line-clamp-1">
-            {server.description}
-          </p>
-        )}
+      <div>
+        <p className="text-text-primary text-sm font-medium">#{name}</p>
+        <p className="text-text-muted text-xs">{formatCount(postCount)} gönderi</p>
       </div>
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={(e) => {
-          e.stopPropagation()
-          navigate(`/sunucular/${server.id}`)
-        }}
-      >
-        Gör
-      </Button>
-    </div>
+    </button>
   )
 }
 
-// ── Keşfet Ana İçerik ─────────────────────────────────────
-const DiscoverContent = () => {
-  const { data: trending, isLoading: loadingTrending } = useTrendingHashtags()
-  const { data: suggested, isLoading: loadingSuggested } = useSuggestedProfiles()
-  const { data: servers, isLoading: loadingServers } = useSuggestedServers()
-  const { toggleFollow, isFollowing, isPending, initFollowState } = useFollow()
+// ── UserCard ──────────────────────────────────────────
+
+function UserCard({
+  user: targetUser,
+  currentUserId,
+  isFollowing = false,
+}: {
+  user: UserResult
+  currentUserId?: string
+  isFollowing?: boolean
+}) {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [following, setFollowing] = useState(isFollowing)
 
   useEffect(() => {
-    if (suggested && suggested.length > 0) {
-      initFollowState(suggested.map((p) => p.id))
+    setFollowing(isFollowing)
+  }, [isFollowing])
+
+  const isOwn = currentUserId === targetUser.id
+
+  const handleFollow = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!currentUserId) return
+
+    const next = !following
+    setFollowing(next)
+
+    try {
+      if (next) {
+        await supabase.from('follows').insert({ follower_id: currentUserId, following_id: targetUser.id })
+      } else {
+        await supabase.from('follows').delete().match({ follower_id: currentUserId, following_id: targetUser.id })
+      }
+      void queryClient.invalidateQueries({ queryKey: ['follow-status', targetUser.id] })
+      void queryClient.invalidateQueries({ queryKey: ['my-following-ids', currentUserId] })
+    } catch {
+      setFollowing(!next)
+      toast.error('İşlem başarısız')
     }
-  }, [suggested, initFollowState])
+  }
 
   return (
-    <div className="divide-y divide-[var(--border)]">
-      {/* Trend Hashtagler */}
-      <section className="p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <TrendingUp size={16} className="text-[var(--accent)]" />
-          <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-            Gündemde
-          </h2>
+    <button
+      type="button"
+      onClick={() => navigate(`/${targetUser.username}`)}
+      className="w-full flex items-center gap-3 px-4 py-3 border-b border-line hover:bg-bg-overlay transition-default text-left"
+    >
+      <Avatar src={targetUser.avatar_url} fallback={targetUser.display_name} size="md" isNova={targetUser.is_nova_plus} />
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1">
+          <span className="font-semibold text-text-primary text-sm truncate">{targetUser.display_name}</span>
+          {targetUser.is_verified && <VerifiedIcon size={13} />}
         </div>
+        <p className="text-text-muted text-xs truncate">@{targetUser.username} · {formatCount(targetUser.follower_count)} takipçi</p>
+      </div>
 
-        {loadingTrending ? (
-          <TrendingSkeleton />
+      {!isOwn && currentUserId && (
+        <button
+          type="button"
+          onClick={(e) => void handleFollow(e)}
+          className={cn(
+            'flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-default',
+            following
+              ? 'border border-line text-text-muted hover:border-error hover:text-error'
+              : 'bg-text-primary text-bg-base hover:opacity-80'
+          )}
+        >
+          {following ? 'Takip Ediliyor' : 'Takip Et'}
+        </button>
+      )}
+    </button>
+  )
+}
+
+// ── ServerCard ────────────────────────────────────────
+
+function ServerCard({ server, currentUserId }: { server: ServerResult; currentUserId?: string }) {
+  const navigate = useNavigate()
+  const [joining, setJoining] = useState(false)
+
+  const handleJoin = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!currentUserId || joining) return
+    setJoining(true)
+
+    try {
+      const { error } = await supabase
+        .from('server_members')
+        .insert({ server_id: server.id, user_id: currentUserId, role: 'member' })
+
+      if (error) {
+        if (error.code === '23505') {
+          toast.info('Zaten bu sunucunun üyesisin')
+        } else {
+          throw error
+        }
+      } else {
+        toast.success(`${server.name} sunucusuna katıldın!`)
+        navigate(`/sunucular/${server.id}`)
+      }
+    } catch {
+      toast.error('Sunucuya katılınamadı')
+    } finally {
+      setJoining(false)
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => navigate(`/sunucular/${server.id}`)}
+      className="w-full flex items-center gap-3 px-4 py-3 border-b border-line hover:bg-bg-overlay transition-default text-left"
+    >
+      {/* Sunucu avatarı */}
+      <div className="w-10 h-10 rounded-xl bg-bg-elevated border border-line flex-shrink-0 overflow-hidden flex items-center justify-center">
+        {server.avatar_url ? (
+          <img src={server.avatar_url} alt={server.name} className="w-full h-full object-cover" />
         ) : (
-          <div className="space-y-1">
-            {(trending ?? []).map((hashtag, i) => (
-              <Link
-                key={hashtag.id}
-                to={`/kesif?q=%23${hashtag.name}`}
-                className="flex items-center justify-between py-2 px-3 rounded-[var(--radius-md)] hover:bg-[var(--bg-surface)] transition-colors"
-              >
-                <div>
-                  <p className="text-[10px] text-[var(--text-muted)]">
-                    #{i + 1} · Trend
-                  </p>
-                  <p className="text-sm font-medium text-[var(--text-primary)]">
-                    #{hashtag.name}
-                  </p>
-                </div>
-                <p className="text-xs text-[var(--text-muted)]">
-                  {formatCount(hashtag.post_count)} post
-                </p>
-              </Link>
-            ))}
-          </div>
+          <Globe size={18} className="text-text-muted" />
         )}
-      </section>
+      </div>
 
-      {/* Önerilen Kişiler */}
-      <section className="p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Users size={16} className="text-[var(--accent)]" />
-            <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-              Önerilen Kişiler
-            </h2>
-          </div>
-          <Link
-            to="/kesif?tab=profiles"
-            className="text-xs text-[var(--accent)] hover:underline"
-          >
-            Tümü
-          </Link>
-        </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-text-primary text-sm truncate">{server.name}</p>
+        <p className="text-text-muted text-xs truncate">
+          {server.description ?? ''}{server.description ? ' · ' : ''}{formatCount(server.member_count)} üye
+        </p>
+      </div>
 
-        {loadingSuggested ? (
-          <ProfileListSkeleton count={3} />
-        ) : (suggested ?? []).length === 0 ? (
-          <p className="text-sm text-[var(--text-muted)] text-center py-4">
-            Şimdilik öneri yok.
-          </p>
-        ) : (
-          <div className="space-y-1">
-            {(suggested ?? []).map((profile) => (
-              <ProfileRow
-                key={profile.id}
-                profile={profile}
-                isFollowing={isFollowing(profile.id)}
-                isPending={isPending(profile.id)}
-                onFollow={() => toggleFollow(profile.id, profile.is_private)}
-                showBio={false}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+      {currentUserId && (
+        <button
+          type="button"
+          onClick={(e) => void handleJoin(e)}
+          disabled={joining}
+          className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold bg-accent/10 text-accent hover:bg-accent/20 transition-default disabled:opacity-50"
+        >
+          {joining ? '...' : 'Katıl'}
+        </button>
+      )}
+    </button>
+  )
+}
 
-      {/* Önerilen Sunucular */}
-      <section className="p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Globe size={16} className="text-[var(--accent)]" />
-            <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-              Keşfedilecek Sunucular
-            </h2>
-          </div>
-          <Link
-            to="/sunucular"
-            className="text-xs text-[var(--accent)] hover:underline"
-          >
-            Tümü
-          </Link>
-        </div>
+// ── Skeleton'lar ──────────────────────────────────────
 
-        {loadingServers ? (
-          <ServerListSkeleton count={3} />
-        ) : (servers ?? []).length === 0 ? (
-          <p className="text-sm text-[var(--text-muted)] text-center py-4">
-            Katılabileceğin sunucu bulunamadı.
-          </p>
-        ) : (
-          <div className="space-y-1">
-            {(servers ?? []).map((server) => (
-              <ServerRow key={server.id} server={server} />
-            ))}
-          </div>
-        )}
-      </section>
+function UserSkeleton() {
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 border-b border-line">
+      <Skeleton className="w-10 h-10 flex-shrink-0" rounded="full" />
+      <div className="flex-1 space-y-2">
+        <Skeleton className="h-3.5 w-28" />
+        <Skeleton className="h-3 w-20" />
+      </div>
+      <Skeleton className="h-7 w-20 rounded-full" />
     </div>
   )
 }
 
-// ── Skeleton Bileşenleri ──────────────────────────────────
-const ProfileListSkeleton = ({ count = 5 }: { count?: number }) => (
-  <div className="divide-y divide-[var(--border)]">
-    {Array.from({ length: count }).map((_, i) => (
-      <div key={i} className="flex items-center gap-3 px-4 py-3">
-        <Skeleton className="w-10 h-10 shrink-0" rounded="full" />
-        <div className="flex-1 space-y-1.5">
-          <Skeleton className="w-28 h-3.5" />
-          <Skeleton className="w-20 h-3" />
-        </div>
-        <Skeleton className="w-20 h-8" />
+function HashtagSkeleton() {
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 border-b border-line">
+      <Skeleton className="w-9 h-9 flex-shrink-0" rounded="full" />
+      <div className="space-y-1.5">
+        <Skeleton className="h-3.5 w-32" />
+        <Skeleton className="h-3 w-20" />
       </div>
-    ))}
-  </div>
-)
+    </div>
+  )
+}
 
-const HashtagListSkeleton = () => (
-  <div className="divide-y divide-[var(--border)]">
-    {Array.from({ length: 5 }).map((_, i) => (
-      <div key={i} className="flex items-center gap-3 px-4 py-3">
-        <Skeleton className="w-10 h-10 shrink-0" rounded="full" />
-        <div className="space-y-1.5">
-          <Skeleton className="w-24 h-3.5" />
-          <Skeleton className="w-16 h-3" />
-        </div>
+function ServerSkeleton() {
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 border-b border-line">
+      <Skeleton className="w-10 h-10 flex-shrink-0 rounded-xl" />
+      <div className="flex-1 space-y-2">
+        <Skeleton className="h-3.5 w-36" />
+        <Skeleton className="h-3 w-24" />
       </div>
-    ))}
-  </div>
-)
+      <Skeleton className="h-7 w-16 rounded-full" />
+    </div>
+  )
+}
 
-const ServerListSkeleton = ({ count = 5 }: { count?: number }) => (
-  <div className="divide-y divide-[var(--border)]">
-    {Array.from({ length: count }).map((_, i) => (
-      <div key={i} className="flex items-center gap-3 px-4 py-3">
-        <Skeleton className="w-10 h-10 shrink-0" rounded="md" />
-        <div className="flex-1 space-y-1.5">
-          <Skeleton className="w-28 h-3.5" />
-          <Skeleton className="w-16 h-3" />
-        </div>
-        <Skeleton className="w-14 h-8" />
-      </div>
-    ))}
-  </div>
-)
-
-const TrendingSkeleton = () => (
-  <div className="space-y-1">
-    {Array.from({ length: 5 }).map((_, i) => (
-      <div key={i} className="flex items-center justify-between py-2 px-3">
-        <div className="space-y-1">
-          <Skeleton className="w-12 h-2.5" />
-          <Skeleton className="w-24 h-3.5" />
-        </div>
-        <Skeleton className="w-14 h-3" />
-      </div>
-    ))}
-  </div>
-)
-
-// ── Boş Sonuç ─────────────────────────────────────────────
-const EmptyResult = ({ message }: { message: string }) => (
-  <div className="py-16 flex flex-col items-center gap-3 text-center px-6">
-    <span className="text-4xl">🔭</span>
-    <p className="text-sm text-[var(--text-muted)]">{message}</p>
-  </div>
-)
+function EmptyResult({ text }: { text: string }) {
+  return <p className="px-4 py-8 text-text-muted text-sm text-center">{text}</p>
+}
