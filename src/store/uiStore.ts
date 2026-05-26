@@ -16,11 +16,14 @@ export const useUiStore = create<UiState>((set) => ({
   toasts: [],
 
   addToast: (toast) => {
-    const id = crypto.randomUUID()
-    set((s) => ({ toasts: [...s.toasts, { ...toast, id }] }))
-    setTimeout(() => {
-      set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }))
-    }, 4000)
+    set((s) => {
+      if (s.toasts.some((t) => t.message === toast.message && t.type === toast.type)) return s
+      const id = crypto.randomUUID()
+      setTimeout(() => {
+        set((s2) => ({ toasts: s2.toasts.filter((t) => t.id !== id) }))
+      }, 4000)
+      return { toasts: [...s.toasts, { ...toast, id }] }
+    })
   },
 
   removeToast: (id) =>

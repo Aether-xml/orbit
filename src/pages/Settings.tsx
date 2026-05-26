@@ -414,7 +414,7 @@ function EmailModal({ open, onClose }: { open: boolean; onClose: () => void }) {
           {...register('newEmail')}
         />
         <Input
-          label="Şifren"
+          label="Mevcut Şifre"
           type="password"
           autoComplete="current-password"
           error={errors.password?.message}

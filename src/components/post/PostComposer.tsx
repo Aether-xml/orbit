@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { ImageIcon, X, BarChart2, Quote } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -37,6 +37,8 @@ export default function PostComposer({
   const [images, setImages] = useState<File[]>([])
   const [previews, setPreviews] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [cooldownLeft, setCooldownLeft] = useState(0)
+  const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Poll state
   const [pollOpen, setPollOpen] = useState(false)
@@ -47,6 +49,25 @@ export default function PostComposer({
   const remaining = LIMIT - content.length
   const isOverLimit = remaining < 0
   const isEmpty = content.trim().length === 0 && images.length === 0
+
+  useEffect(() => {
+    return () => { if (cooldownRef.current) clearInterval(cooldownRef.current) }
+  }, [])
+
+  const startCooldown = () => {
+    setCooldownLeft(30)
+    if (cooldownRef.current) clearInterval(cooldownRef.current)
+    cooldownRef.current = setInterval(() => {
+      setCooldownLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(cooldownRef.current!)
+          cooldownRef.current = null
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setContent(e.target.value)
@@ -94,6 +115,10 @@ export default function PostComposer({
 
   const handleSubmit = async () => {
     if (isEmpty || isOverLimit || isSubmitting || !user) return
+    if (cooldownLeft > 0) {
+      toast.warning(`${cooldownLeft} saniye bekle`)
+      return
+    }
     setIsSubmitting(true)
 
     let media_urls: string[] = []
@@ -144,6 +169,7 @@ export default function PostComposer({
       if (textareaRef.current) textareaRef.current.style.height = 'auto'
       void queryClient.invalidateQueries({ queryKey: ['feed'] })
       if (replyToId) void queryClient.invalidateQueries({ queryKey: ['comments', replyToId] })
+      startCooldown()
       onPost?.()
     }
 
@@ -336,10 +362,10 @@ export default function PostComposer({
               <Button
                 size="sm"
                 onClick={() => void handleSubmit()}
-                disabled={isEmpty || isOverLimit}
+                disabled={isEmpty || isOverLimit || cooldownLeft > 0}
                 loading={isSubmitting}
               >
-                Paylaş
+                {cooldownLeft > 0 ? `${cooldownLeft}s` : 'Paylaş'}
               </Button>
             </div>
           </div>

@@ -232,7 +232,7 @@ export default function ServerPage() {
   }
 
   return (
-    <div className="flex h-dvh overflow-hidden">
+    <div className="flex h-[calc(100dvh-60px)] sm:h-dvh overflow-hidden">
       {/* ── Desktop sidebar ──────────────────────── */}
       <div className="hidden sm:flex w-52 flex-shrink-0 flex-col border-r border-line">
         <ServerSidebar
@@ -291,9 +291,8 @@ export default function ServerPage() {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto py-4 scrollbar-hide">
           {!channelId ? (
-            <div className="flex flex-col items-center justify-center h-full text-center px-8">
-              <Hash size={40} className="text-text-muted mb-3 opacity-40" />
-              <p className="text-text-muted text-sm">Soldan bir kanal seç</p>
+            <div className="flex items-center justify-center h-full">
+              <div className="w-7 h-7 border-2 border-accent border-t-transparent rounded-full animate-spin" />
             </div>
           ) : messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">

@@ -129,7 +129,7 @@ export default function NovaPlus() {
             key={plan.id}
             className={cn(
               'relative rounded-xl border p-4',
-              plan.id === 'yearly' ? 'border-accent bg-accent/5' : 'border-line bg-bg-surface'
+              plan.id === 'yearly' ? 'border-accent bg-accent/5' : 'border-line bg-bg-elevated'
             )}
           >
             {plan.badge && (
