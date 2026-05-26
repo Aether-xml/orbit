@@ -4,11 +4,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { ArrowLeft, Lock, MapPin, Link2, Calendar, UserCheck, Camera, Settings as SettingsIcon, Images, FileText } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { ArrowLeft, Lock, MapPin, Link2, Calendar, UserCheck, Camera, Settings as SettingsIcon, Images, Heart } from 'lucide-react'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
-import { cn } from '@/lib/utils'
-import { formatCount } from '@/lib/utils'
+import { cn, formatCount } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import { uploadFile, uniquePath } from '@/lib/upload'
 import { useAuthStore } from '@/store/authStore'
@@ -24,8 +24,6 @@ import { ProfileSkeleton } from '@/components/ui/Skeleton'
 
 type FollowState = 'none' | 'following' | 'requested'
 type ProfileTab = 'posts' | 'media' | 'likes'
-
-// ── Edit form ─────────────────────────────────────────
 
 const editSchema = z.object({
   display_name: z.string().min(1, 'Görünen ad gerekli').max(50, 'En fazla 50 karakter'),
@@ -51,12 +49,7 @@ function PostGridCell({ post, onClick }: { post: PostWithAuthor; onClick: () => 
     >
       {hasMedia && firstUrl ? (
         isVideo ? (
-          <video
-            src={firstUrl}
-            className="w-full h-full object-cover"
-            muted
-            preload="metadata"
-          />
+          <video src={firstUrl} className="w-full h-full object-cover" muted preload="metadata" />
         ) : (
           <img
             src={firstUrl}
@@ -66,7 +59,7 @@ function PostGridCell({ post, onClick }: { post: PostWithAuthor; onClick: () => 
           />
         )
       ) : (
-        <div className="w-full h-full flex items-start p-2 bg-bg-surface">
+        <div className="w-full h-full flex items-start p-2.5 bg-bg-surface">
           <p className="text-text-secondary text-[10px] leading-tight line-clamp-5 text-left">
             {post.content}
           </p>
@@ -79,16 +72,89 @@ function PostGridCell({ post, onClick }: { post: PostWithAuthor; onClick: () => 
         </div>
       )}
 
-      {!hasMedia && (
-        <div className="absolute bottom-1.5 right-1.5 drop-shadow-sm">
-          <FileText size={11} className="text-text-muted" />
-        </div>
-      )}
+      <div className="absolute bottom-1.5 right-1.5 flex items-center gap-0.5">
+        <Heart size={9} className="fill-white text-white drop-shadow" />
+        <span className="text-white text-[9px] font-semibold drop-shadow leading-none">
+          {formatCount(post.like_count)}
+        </span>
+      </div>
     </button>
   )
 }
 
-// ── Component ─────────────────────────────────────────
+// ── Follow button ─────────────────────────────────────
+
+function FollowButton({
+  followState,
+  onToggle,
+  isPrivate,
+  className,
+}: {
+  followState: FollowState
+  onToggle: () => void
+  isPrivate: boolean
+  className?: string
+}) {
+  if (followState === 'following') {
+    return (
+      <button
+        type="button"
+        onClick={onToggle}
+        className={cn(
+          'group px-4 py-2 rounded-lg text-sm font-semibold border border-line text-text-primary',
+          'hover:border-error hover:text-error transition-default flex items-center justify-center',
+          className
+        )}
+      >
+        <span className="group-hover:hidden flex items-center gap-1.5">
+          <UserCheck size={14} />Takip Ediliyor
+        </span>
+        <span className="hidden group-hover:block">Takibi Bırak</span>
+      </button>
+    )
+  }
+  if (followState === 'requested') {
+    return (
+      <button
+        type="button"
+        onClick={onToggle}
+        className={cn(
+          'group px-4 py-2 rounded-lg text-sm font-semibold border border-line text-text-muted',
+          'hover:border-error hover:text-error transition-default flex items-center justify-center',
+          className
+        )}
+      >
+        <span className="group-hover:hidden">İstek Gönderildi</span>
+        <span className="hidden group-hover:block">İptal Et</span>
+      </button>
+    )
+  }
+  return (
+    <Button className={cn('py-2', className)} onClick={onToggle}>
+      {isPrivate ? 'İstek Gönder' : 'Takip Et'}
+    </Button>
+  )
+}
+
+// ── Locked profile ────────────────────────────────────
+
+function LockedProfile({ isRequested }: { isRequested: boolean }) {
+  return (
+    <div className="flex flex-col items-center py-16 px-4 text-center gap-3">
+      <div className="w-14 h-14 rounded-full bg-bg-elevated flex items-center justify-center">
+        <Lock size={22} className="text-text-muted" />
+      </div>
+      <h3 className="font-semibold text-text-primary">Bu hesap gizli</h3>
+      <p className="text-text-muted text-sm max-w-xs">
+        {isRequested
+          ? 'Takip isteğin onaylandığında gönderileri görebilirsin.'
+          : 'Gönderileri görmek için bu hesabı takip et.'}
+      </p>
+    </div>
+  )
+}
+
+// ── Main component ────────────────────────────────────
 
 export default function Profile() {
   const { username } = useParams<{ username: string }>()
@@ -101,7 +167,9 @@ export default function Profile() {
   const [followState, setFollowState] = useState<FollowState>('none')
   const [followerCount, setFollowerCount] = useState(0)
 
-  // Fetch target profile
+  const avatarInputRef = useRef<HTMLInputElement>(null)
+  const bannerInputRef = useRef<HTMLInputElement>(null)
+
   const { data: profile, isLoading } = useQuery({
     queryKey: ['profile', username],
     queryFn: async () => {
@@ -122,7 +190,6 @@ export default function Profile() {
     if (profile) setFollowerCount(profile.follower_count)
   }, [profile])
 
-  // Fetch follow status
   const { data: followStatus } = useQuery({
     queryKey: ['follow-status', profile?.id, user?.id],
     queryFn: async (): Promise<FollowState> => {
@@ -144,7 +211,6 @@ export default function Profile() {
 
   const canViewPosts = !profile?.is_private || isOwn || followState === 'following'
 
-  // Fetch posts for active tab
   const { data: posts, isLoading: postsLoading } = useQuery({
     queryKey: ['profile-posts', profile?.id, tab],
     queryFn: async (): Promise<PostWithAuthor[]> => {
@@ -159,13 +225,11 @@ export default function Profile() {
         const { data } = await base.eq('user_id', profile!.id).is('reply_to_id', null)
         return (data ?? []) as unknown as PostWithAuthor[]
       }
-
       if (tab === 'media') {
         const { data } = await base.eq('user_id', profile!.id).not('media_urls', 'eq', '{}')
         return (data ?? []) as unknown as PostWithAuthor[]
       }
 
-      // likes tab
       const { data: likedIds } = await supabase
         .from('likes')
         .select('target_id')
@@ -186,12 +250,11 @@ export default function Profile() {
     enabled: !!profile?.id && canViewPosts,
   })
 
-  // ── Follow toggle ──────────────────────────────────
+  // ── Handlers ──────────────────────────────────────────
 
   const handleFollow = async () => {
     if (!user || !profile) return
     const prev = followState
-
     if (followState === 'following') {
       setFollowState('none')
       setFollowerCount((c) => c - 1)
@@ -215,7 +278,83 @@ export default function Profile() {
     }
   }
 
-  // ── Render ────────────────────────────────────────
+  const handleMessage = async () => {
+    if (!user || !profile) return
+    const { data: myConvs } = await supabase
+      .from('conversation_participants')
+      .select('conversation_id')
+      .eq('user_id', user.id)
+
+    if (myConvs?.length) {
+      const myIds = myConvs.map((c) => c.conversation_id)
+      const { data: shared } = await supabase
+        .from('conversation_participants')
+        .select('conversation_id')
+        .eq('user_id', profile.id)
+        .in('conversation_id', myIds)
+        .limit(1)
+      if (shared?.[0]) {
+        navigate(`/mesajlar/${shared[0].conversation_id}`)
+        return
+      }
+    }
+
+    const { data: conv, error } = await supabase
+      .from('conversations')
+      .insert({})
+      .select('id')
+      .single()
+
+    if (error || !conv) { toast.error('Mesaj başlatılamadı'); return }
+
+    await supabase.from('conversation_participants').insert([
+      { conversation_id: conv.id, user_id: user.id },
+      { conversation_id: conv.id, user_id: profile.id },
+    ])
+    navigate(`/mesajlar/${conv.id}`)
+  }
+
+  const pickFile = (
+    ref: React.RefObject<HTMLInputElement | null>,
+    onPick: (file: File) => void
+  ) => {
+    const input = ref.current
+    if (!input) return
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0]
+      if (file) onPick(file)
+      input.value = ''
+    }
+    input.click()
+  }
+
+  const handleAvatarChange = async (file: File) => {
+    if (!user || !profile) return
+    try {
+      const url = await uploadFile('avatars', file, uniquePath(user.id, file))
+      await supabase.from('profiles').update({ avatar_url: url }).eq('id', user.id)
+      setMyProfile({ ...profile, avatar_url: url })
+      void queryClient.invalidateQueries({ queryKey: ['profile', username] })
+      toast.success('Profil fotoğrafı güncellendi')
+    } catch {
+      toast.error('Fotoğraf yüklenemedi')
+    }
+  }
+
+  const handleBannerChange = async (file: File) => {
+    if (!user || !profile) return
+    try {
+      const url = await uploadFile('banners', file, uniquePath(user.id, file))
+      await supabase.from('profiles').update({ banner_url: url }).eq('id', user.id)
+      setMyProfile({ ...profile, banner_url: url })
+      void queryClient.invalidateQueries({ queryKey: ['profile', username] })
+      toast.success('Kapak fotoğrafı güncellendi')
+    } catch {
+      toast.error('Fotoğraf yüklenemedi')
+    }
+  }
+
+  // ── Render guards ─────────────────────────────────────
 
   if (isLoading) return <ProfileSkeleton />
 
@@ -230,114 +369,191 @@ export default function Profile() {
 
   return (
     <div className="min-h-dvh">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-bg-base/80 backdrop-blur-md border-b border-line flex items-center gap-4 px-4 py-3">
+      {/* Hidden file inputs — own profile only */}
+      {isOwn && (
+        <>
+          <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" />
+          <input ref={bannerInputRef} type="file" accept="image/*" className="hidden" />
+        </>
+      )}
+
+      {/* Sticky header */}
+      <div className="sticky top-0 z-10 bg-bg-base/80 backdrop-blur-md border-b border-line h-14 flex items-center px-2 gap-2">
         <button
           type="button"
           onClick={() => navigate(-1)}
-          className="p-2 -ml-2 rounded-full text-text-primary hover:bg-bg-overlay transition-default"
+          className="p-2 rounded-full text-text-primary hover:bg-bg-overlay transition-default flex-shrink-0"
         >
           <ArrowLeft size={20} />
         </button>
-        <div className="flex-1 min-w-0">
-          <h1 className="font-semibold text-text-primary leading-tight truncate">{profile.display_name}</h1>
-          <p className="text-text-muted text-xs">{formatCount(profile.post_count)} gönderi</p>
-        </div>
-        {isOwn && (
+        <span className="flex-1 text-center font-semibold text-text-primary text-sm truncate px-2">
+          {profile.display_name}
+        </span>
+        {isOwn ? (
           <button
             type="button"
             onClick={() => navigate('/ayarlar')}
             aria-label="Ayarlar"
-            className="p-2 -mr-2 rounded-full text-text-primary hover:bg-bg-overlay transition-default flex-shrink-0"
+            className="p-2 rounded-full text-text-primary hover:bg-bg-overlay transition-default flex-shrink-0"
           >
             <SettingsIcon size={20} />
           </button>
+        ) : (
+          <div className="w-10 h-10 flex-shrink-0" />
         )}
       </div>
 
       {/* Banner */}
       <div className="relative">
-        <div className="h-36 bg-gradient-to-br from-bg-elevated to-bg-overlay overflow-hidden">
-          {profile.banner_url && (
+        <div
+          className={cn('h-32 overflow-hidden relative', isOwn && 'cursor-pointer group')}
+          onClick={
+            isOwn
+              ? () => pickFile(bannerInputRef, (f) => void handleBannerChange(f))
+              : undefined
+          }
+        >
+          {profile.banner_url ? (
             <img src={profile.banner_url} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full bg-bg-surface" />
+          )}
+          {isOwn && (
+            <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <Camera size={22} className="text-white" />
+            </div>
           )}
         </div>
-        <div className="absolute -bottom-12 left-4">
-          <Avatar src={profile.avatar_url} fallback={profile.display_name} size="xl" isNova={profile.is_nova_plus} />
+
+        {/* Avatar — centered, overlapping banner bottom */}
+        <div className="absolute left-1/2 -translate-x-1/2 -bottom-12">
+          <div
+            className={cn(
+              'relative rounded-full border-4 border-bg-base',
+              isOwn && 'cursor-pointer group'
+            )}
+            onClick={
+              isOwn
+                ? () => pickFile(avatarInputRef, (f) => void handleAvatarChange(f))
+                : undefined
+            }
+          >
+            <Avatar
+              src={profile.avatar_url}
+              fallback={profile.display_name}
+              size="xl"
+              isNova={profile.is_nova_plus}
+            />
+            {isOwn && (
+              <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <Camera size={16} className="text-white" />
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Action button row */}
-      <div className="flex justify-end px-4 pt-3 pb-3 gap-2">
-        {isOwn ? (
-          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
-            Profili Düzenle
-          </Button>
-        ) : (
-          <FollowButton followState={followState} onToggle={() => void handleFollow()} isPrivate={profile.is_private} />
-        )}
+      {/* Name — centered */}
+      <div className="pt-16 px-4 text-center">
+        <div className="flex items-center justify-center gap-1.5 flex-wrap">
+          <h2 className="text-xl font-bold text-text-primary">{profile.display_name}</h2>
+          {profile.is_verified && <VerifiedIcon size={17} />}
+          {profile.selected_badge && (
+            <Badge id={profile.selected_badge as BadgeId} size="sm" showLabel />
+          )}
+          {profile.is_private && <Lock size={13} className="text-text-muted" />}
+        </div>
+        <p className="text-text-secondary text-sm mt-0.5">@{profile.username}</p>
       </div>
 
-      {/* Stats row — Instagram style */}
-      <div className="flex border-b border-line mt-1">
-        <div className="flex-1 flex flex-col items-center py-3 gap-0.5">
-          <span className="font-bold text-text-primary text-lg leading-none">{formatCount(profile.post_count)}</span>
+      {/* Stats row */}
+      <div className="flex mt-4 px-4 gap-1">
+        <div className="flex-1 flex flex-col items-center gap-0.5 py-2">
+          <span className="font-bold text-text-primary text-xl leading-none">
+            {formatCount(profile.post_count)}
+          </span>
           <span className="text-text-muted text-xs">Gönderi</span>
         </div>
         <button
           type="button"
-          className="flex-1 flex flex-col items-center py-3 gap-0.5 hover:bg-bg-overlay transition-default"
+          className="flex-1 flex flex-col items-center gap-0.5 py-2 hover:bg-bg-overlay rounded-lg transition-default"
           onClick={() => navigate(`/${username}/takipciler`)}
         >
-          <span className="font-bold text-text-primary text-lg leading-none">{formatCount(followerCount)}</span>
+          <span className="font-bold text-text-primary text-xl leading-none">
+            {formatCount(followerCount)}
+          </span>
           <span className="text-text-muted text-xs">Takipçi</span>
         </button>
         <button
           type="button"
-          className="flex-1 flex flex-col items-center py-3 gap-0.5 hover:bg-bg-overlay transition-default"
+          className="flex-1 flex flex-col items-center gap-0.5 py-2 hover:bg-bg-overlay rounded-lg transition-default"
           onClick={() => navigate(`/${username}/takip`)}
         >
-          <span className="font-bold text-text-primary text-lg leading-none">{formatCount(profile.following_count)}</span>
+          <span className="font-bold text-text-primary text-xl leading-none">
+            {formatCount(profile.following_count)}
+          </span>
           <span className="text-text-muted text-xs">Takip</span>
         </button>
       </div>
 
-      {/* Profile info */}
-      <div className="px-4 pt-4 pb-2 space-y-2">
-        <div>
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <h2 className="text-lg font-bold text-text-primary">{profile.display_name}</h2>
-            {profile.is_verified && <VerifiedIcon size={17} />}
-            {profile.selected_badge && (
-              <Badge id={profile.selected_badge as BadgeId} size="sm" showLabel />
-            )}
+      {/* Action buttons */}
+      <div className="px-4 mt-3">
+        {isOwn ? (
+          <Button variant="outline" className="w-full" onClick={() => setEditOpen(true)}>
+            Profili Düzenle
+          </Button>
+        ) : (
+          <div className="flex gap-2">
+            <FollowButton
+              className="flex-1"
+              followState={followState}
+              onToggle={() => void handleFollow()}
+              isPrivate={profile.is_private}
+            />
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => void handleMessage()}
+            >
+              Mesaj
+            </Button>
           </div>
-          <p className="text-text-muted text-sm">@{profile.username}</p>
-        </div>
-
-        {profile.bio && (
-          <p className="text-text-primary text-sm leading-relaxed whitespace-pre-wrap">{profile.bio}</p>
         )}
+      </div>
 
+      {/* Bio section */}
+      <div className="px-4 mt-4 space-y-1.5">
+        {profile.bio && (
+          <p className="text-text-primary text-sm leading-relaxed whitespace-pre-wrap">
+            {profile.bio}
+          </p>
+        )}
         <div className="flex flex-wrap gap-x-4 gap-y-1">
+          {profile.website && (
+            <a
+              href={profile.website}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-accent text-xs hover:underline"
+            >
+              <Link2 size={12} />
+              {profile.website.replace(/^https?:\/\//, '')}
+            </a>
+          )}
           {profile.location && (
             <span className="flex items-center gap-1 text-text-muted text-xs">
               <MapPin size={12} /> {profile.location}
             </span>
           )}
-          {profile.website && (
-            <a href={profile.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-accent text-xs hover:underline">
-              <Link2 size={12} /> {profile.website.replace(/^https?:\/\//, '')}
-            </a>
-          )}
           <span className="flex items-center gap-1 text-text-muted text-xs">
-            <Calendar size={12} /> {format(new Date(profile.created_at), 'MMMM yyyy', { locale: tr })} tarihinde katıldı
+            <Calendar size={12} />
+            {format(new Date(profile.created_at), 'MMMM yyyy', { locale: tr })} tarihinde katıldı
           </span>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="border-b border-line flex sticky top-[57px] z-10 bg-bg-base/80 backdrop-blur-md mt-2">
+      {/* Tabs with sliding gold indicator */}
+      <div className="border-b border-line flex sticky top-14 z-10 bg-bg-base/90 backdrop-blur-md mt-4">
         {(['posts', 'media', 'likes'] as const).map((t) => (
           <button
             key={t}
@@ -345,11 +561,18 @@ export default function Profile() {
             onClick={() => setTab(t)}
             className={cn(
               'flex-1 py-3 text-sm font-medium transition-default relative',
-              tab === t ? 'text-text-primary' : 'text-text-muted hover:text-text-secondary hover:bg-bg-overlay'
+              tab === t
+                ? 'text-text-primary'
+                : 'text-text-muted hover:text-text-secondary hover:bg-bg-overlay'
             )}
           >
             {{ posts: 'Gönderiler', media: 'Medya', likes: 'Beğendikleri' }[t]}
-            {tab === t && <span className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-accent rounded-full" />}
+            {tab === t && (
+              <motion.span
+                layoutId="profile-tab-indicator"
+                className="absolute bottom-0 inset-x-0 h-0.5 bg-accent"
+              />
+            )}
           </button>
         ))}
       </div>
@@ -366,7 +589,11 @@ export default function Profile() {
       ) : !posts?.length ? (
         <div className="flex flex-col items-center py-16 text-center px-4">
           <p className="text-text-muted text-sm">
-            {tab === 'posts' ? 'Henüz gönderi yok.' : tab === 'media' ? 'Medya içerikli gönderi yok.' : 'Beğenilen gönderi yok.'}
+            {tab === 'posts'
+              ? 'Henüz gönderi yok.'
+              : tab === 'media'
+              ? 'Medya içerikli gönderi yok.'
+              : 'Beğenilen gönderi yok.'}
           </p>
         </div>
       ) : (
@@ -397,55 +624,7 @@ export default function Profile() {
   )
 }
 
-// ── Sub-components ────────────────────────────────────
-
-function FollowButton({ followState, onToggle, isPrivate }: { followState: FollowState; onToggle: () => void; isPrivate: boolean }) {
-  if (followState === 'following') {
-    return (
-      <button
-        type="button"
-        onClick={onToggle}
-        className="group px-4 py-1.5 rounded-full text-sm font-semibold border border-line text-text-primary hover:border-error hover:text-error transition-default"
-      >
-        <span className="group-hover:hidden flex items-center gap-1.5"><UserCheck size={14} />Takip Ediliyor</span>
-        <span className="hidden group-hover:block">Takibi Bırak</span>
-      </button>
-    )
-  }
-  if (followState === 'requested') {
-    return (
-      <button
-        type="button"
-        onClick={onToggle}
-        className="group px-4 py-1.5 rounded-full text-sm font-semibold border border-line text-text-muted hover:border-error hover:text-error transition-default"
-      >
-        <span className="group-hover:hidden">İstek Gönderildi</span>
-        <span className="hidden group-hover:block">İptal Et</span>
-      </button>
-    )
-  }
-  return (
-    <Button size="sm" onClick={onToggle}>
-      {isPrivate ? 'İstek Gönder' : 'Takip Et'}
-    </Button>
-  )
-}
-
-function LockedProfile({ isRequested }: { isRequested: boolean }) {
-  return (
-    <div className="flex flex-col items-center py-16 px-4 text-center gap-3">
-      <div className="w-14 h-14 rounded-full bg-bg-elevated flex items-center justify-center">
-        <Lock size={22} className="text-text-muted" />
-      </div>
-      <h3 className="font-semibold text-text-primary">Bu hesap gizli</h3>
-      <p className="text-text-muted text-sm max-w-xs">
-        {isRequested
-          ? 'Takip isteğin onaylandığında gönderileri görebilirsin.'
-          : 'Gönderileri görmek için bu hesabı takip et.'}
-      </p>
-    </div>
-  )
-}
+// ── Edit Profile Modal ────────────────────────────────
 
 function EditProfileModal({
   open,
@@ -499,12 +678,8 @@ function EditProfileModal({
     let banner_url = profile.banner_url
 
     try {
-      if (avatarFile) {
-        avatar_url = await uploadFile('avatars', avatarFile, uniquePath(user.id, avatarFile))
-      }
-      if (bannerFile) {
-        banner_url = await uploadFile('banners', bannerFile, uniquePath(user.id, bannerFile))
-      }
+      if (avatarFile) avatar_url = await uploadFile('avatars', avatarFile, uniquePath(user.id, avatarFile))
+      if (bannerFile) banner_url = await uploadFile('banners', bannerFile, uniquePath(user.id, bannerFile))
     } catch {
       toast.error('Resim yüklenemedi')
       setSaving(false)
@@ -540,7 +715,7 @@ function EditProfileModal({
           <button
             type="button"
             onClick={() => pickFile(bannerInputRef, (f) => { setBannerFile(f); setBannerPreview(URL.createObjectURL(f)) })}
-            className="w-full h-24 bg-gradient-to-br from-bg-elevated to-bg-overlay overflow-hidden group relative"
+            className="w-full h-24 bg-bg-surface overflow-hidden group relative"
           >
             {currentBanner && <img src={currentBanner} alt="" className="w-full h-full object-cover" />}
             <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -603,7 +778,6 @@ function EditProfileModal({
             {...register('location')}
           />
 
-          {/* Nova+ accent color picker */}
           {profile.is_nova_plus && (
             <div className="space-y-2">
               <label className="block text-text-secondary text-sm">
