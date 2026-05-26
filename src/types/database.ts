@@ -69,6 +69,7 @@ export type Profile = {
   following_count: number
   post_count: number
   reel_count: number
+  google_setup_done: boolean
   search_vector: string | null
   created_at: string
   updated_at: string

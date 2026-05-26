@@ -22,11 +22,15 @@ import Settings from '@/pages/Settings'
 import Servers from '@/pages/Servers'
 import ServerPage from '@/pages/ServerPage'
 import Onboarding from '@/pages/Onboarding'
+import GoogleSetup from '@/pages/GoogleSetup'
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, isInitialized } = useAuthStore()
+function ProtectedRoute({ children, skipSetupCheck = false }: { children: React.ReactNode; skipSetupCheck?: boolean }) {
+  const { user, profile, isInitialized } = useAuthStore()
   if (!isInitialized) return <AppLoader />
   if (!user) return <Navigate to="/giris" replace />
+  if (!skipSetupCheck && profile?.google_setup_done === false) {
+    return <Navigate to="/google-setup" replace />
+  }
   return <>{children}</>
 }
 
@@ -74,7 +78,8 @@ function AppRoutes() {
       {/* Full-screen routes (no AppLayout) */}
       <Route path="/reels"          element={<ProtectedRoute><Reels /></ProtectedRoute>} />
       <Route path="/reels/olustur"  element={<ProtectedRoute><CreateReel /></ProtectedRoute>} />
-      <Route path="/onboarding"     element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
+      <Route path="/onboarding"     element={<ProtectedRoute skipSetupCheck><Onboarding /></ProtectedRoute>} />
+      <Route path="/google-setup"   element={<ProtectedRoute skipSetupCheck><GoogleSetup /></ProtectedRoute>} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

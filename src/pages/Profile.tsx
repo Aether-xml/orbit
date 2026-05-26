@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { ArrowLeft, Lock, MapPin, Link2, Calendar, UserCheck, Camera, Settings as SettingsIcon } from 'lucide-react'
+import { ArrowLeft, Lock, MapPin, Link2, Calendar, UserCheck, Camera, Settings as SettingsIcon, Images, FileText } from 'lucide-react'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
@@ -20,8 +20,7 @@ import Modal from '@/components/ui/Modal'
 import Input from '@/components/ui/Input'
 import Badge, { VerifiedIcon } from '@/components/ui/Badge'
 import type { BadgeId } from '@/components/ui/Badge'
-import PostCard from '@/components/post/PostCard'
-import { ProfileSkeleton, PostSkeleton } from '@/components/ui/Skeleton'
+import { ProfileSkeleton } from '@/components/ui/Skeleton'
 
 type FollowState = 'none' | 'following' | 'requested'
 type ProfileTab = 'posts' | 'media' | 'likes'
@@ -36,21 +35,57 @@ const editSchema = z.object({
 })
 type EditForm = z.infer<typeof editSchema>
 
-// ── User interactions (shared with Feed) ─────────────
+// ── Grid cell ─────────────────────────────────────────
 
-type UserInteractions = { likedIds: Set<string>; repostedIds: Set<string>; bookmarkedIds: Set<string> }
+function PostGridCell({ post, onClick }: { post: PostWithAuthor; onClick: () => void }) {
+  const hasMedia = (post.media_urls?.length ?? 0) > 0
+  const firstUrl = post.media_urls?.[0]
+  const isVideo = hasMedia && post.media_types?.[0] === 'video'
+  const hasMultiple = (post.media_urls?.length ?? 0) > 1
 
-async function fetchInteractions(userId: string): Promise<UserInteractions> {
-  const [{ data: likes }, { data: reposts }, { data: bookmarks }] = await Promise.all([
-    supabase.from('likes').select('target_id').eq('user_id', userId).eq('target_type', 'post'),
-    supabase.from('reposts').select('post_id').eq('user_id', userId),
-    supabase.from('bookmarks').select('target_id').eq('user_id', userId).eq('target_type', 'post'),
-  ])
-  return {
-    likedIds:     new Set(likes?.map((l) => l.target_id) ?? []),
-    repostedIds:  new Set(reposts?.map((r) => r.post_id) ?? []),
-    bookmarkedIds: new Set(bookmarks?.map((b) => b.target_id) ?? []),
-  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="aspect-square bg-bg-elevated overflow-hidden relative group"
+    >
+      {hasMedia && firstUrl ? (
+        isVideo ? (
+          <video
+            src={firstUrl}
+            className="w-full h-full object-cover"
+            muted
+            preload="metadata"
+          />
+        ) : (
+          <img
+            src={firstUrl}
+            alt=""
+            className="w-full h-full object-cover group-hover:opacity-90 transition-opacity"
+            loading="lazy"
+          />
+        )
+      ) : (
+        <div className="w-full h-full flex items-start p-2 bg-bg-surface">
+          <p className="text-text-secondary text-[10px] leading-tight line-clamp-5 text-left">
+            {post.content}
+          </p>
+        </div>
+      )}
+
+      {hasMultiple && (
+        <div className="absolute top-1.5 right-1.5 drop-shadow-sm">
+          <Images size={13} className="text-white" />
+        </div>
+      )}
+
+      {!hasMedia && (
+        <div className="absolute bottom-1.5 right-1.5 drop-shadow-sm">
+          <FileText size={11} className="text-text-muted" />
+        </div>
+      )}
+    </button>
+  )
 }
 
 // ── Component ─────────────────────────────────────────
@@ -83,7 +118,6 @@ export default function Profile() {
 
   const isOwn = user?.id === profile?.id
 
-  // Sync follower count from profile
   useEffect(() => {
     if (profile) setFollowerCount(profile.follower_count)
   }, [profile])
@@ -119,7 +153,7 @@ export default function Profile() {
         .select('*, profiles!inner(id, username, display_name, avatar_url, is_verified, is_nova_plus, selected_badge)')
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
-        .limit(50)
+        .limit(60)
 
       if (tab === 'posts') {
         const { data } = await base.eq('user_id', profile!.id).is('reply_to_id', null)
@@ -138,7 +172,7 @@ export default function Profile() {
         .eq('user_id', profile!.id)
         .eq('target_type', 'post')
         .order('created_at', { ascending: false })
-        .limit(50)
+        .limit(60)
 
       if (!likedIds?.length) return []
       const ids = likedIds.map((l) => l.target_id)
@@ -150,13 +184,6 @@ export default function Profile() {
       return (data ?? []) as unknown as PostWithAuthor[]
     },
     enabled: !!profile?.id && canViewPosts,
-  })
-
-  const { data: interactions } = useQuery({
-    queryKey: ['user-interactions', user?.id],
-    queryFn: () => fetchInteractions(user!.id),
-    enabled: !!user?.id,
-    staleTime: 1000 * 60,
   })
 
   // ── Follow toggle ──────────────────────────────────
@@ -205,7 +232,11 @@ export default function Profile() {
     <div className="min-h-dvh">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-bg-base/80 backdrop-blur-md border-b border-line flex items-center gap-4 px-4 py-3">
-        <button type="button" onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-full text-text-primary hover:bg-bg-overlay transition-default">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="p-2 -ml-2 rounded-full text-text-primary hover:bg-bg-overlay transition-default"
+        >
           <ArrowLeft size={20} />
         </button>
         <div className="flex-1 min-w-0">
@@ -231,14 +262,12 @@ export default function Profile() {
             <img src={profile.banner_url} alt="" className="w-full h-full object-cover" />
           )}
         </div>
-
-        {/* Avatar overlapping banner */}
         <div className="absolute -bottom-12 left-4">
           <Avatar src={profile.avatar_url} fallback={profile.display_name} size="xl" isNova={profile.is_nova_plus} />
         </div>
       </div>
 
-      {/* Action buttons */}
+      {/* Action button row */}
       <div className="flex justify-end px-4 pt-3 pb-3 gap-2">
         {isOwn ? (
           <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
@@ -249,13 +278,36 @@ export default function Profile() {
         )}
       </div>
 
+      {/* Stats row — Instagram style */}
+      <div className="flex border-b border-line mt-1">
+        <div className="flex-1 flex flex-col items-center py-3 gap-0.5">
+          <span className="font-bold text-text-primary text-lg leading-none">{formatCount(profile.post_count)}</span>
+          <span className="text-text-muted text-xs">Gönderi</span>
+        </div>
+        <button
+          type="button"
+          className="flex-1 flex flex-col items-center py-3 gap-0.5 hover:bg-bg-overlay transition-default"
+          onClick={() => navigate(`/${username}/takipciler`)}
+        >
+          <span className="font-bold text-text-primary text-lg leading-none">{formatCount(followerCount)}</span>
+          <span className="text-text-muted text-xs">Takipçi</span>
+        </button>
+        <button
+          type="button"
+          className="flex-1 flex flex-col items-center py-3 gap-0.5 hover:bg-bg-overlay transition-default"
+          onClick={() => navigate(`/${username}/takip`)}
+        >
+          <span className="font-bold text-text-primary text-lg leading-none">{formatCount(profile.following_count)}</span>
+          <span className="text-text-muted text-xs">Takip</span>
+        </button>
+      </div>
+
       {/* Profile info */}
-      <div className="px-4 mt-2 space-y-3">
-        {/* Name + badges */}
+      <div className="px-4 pt-4 pb-2 space-y-2">
         <div>
           <div className="flex items-center gap-1.5 flex-wrap">
-            <h2 className="text-xl font-bold text-text-primary">{profile.display_name}</h2>
-            {profile.is_verified && <VerifiedIcon size={18} />}
+            <h2 className="text-lg font-bold text-text-primary">{profile.display_name}</h2>
+            {profile.is_verified && <VerifiedIcon size={17} />}
             {profile.selected_badge && (
               <Badge id={profile.selected_badge as BadgeId} size="sm" showLabel />
             )}
@@ -263,43 +315,29 @@ export default function Profile() {
           <p className="text-text-muted text-sm">@{profile.username}</p>
         </div>
 
-        {/* Bio */}
         {profile.bio && (
-          <p className="text-text-primary text-[15px] leading-relaxed whitespace-pre-wrap">{profile.bio}</p>
+          <p className="text-text-primary text-sm leading-relaxed whitespace-pre-wrap">{profile.bio}</p>
         )}
 
-        {/* Meta */}
         <div className="flex flex-wrap gap-x-4 gap-y-1">
           {profile.location && (
-            <span className="flex items-center gap-1 text-text-muted text-sm">
-              <MapPin size={13} /> {profile.location}
+            <span className="flex items-center gap-1 text-text-muted text-xs">
+              <MapPin size={12} /> {profile.location}
             </span>
           )}
           {profile.website && (
-            <a href={profile.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-accent text-sm hover:underline">
-              <Link2 size={13} /> {profile.website.replace(/^https?:\/\//, '')}
+            <a href={profile.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-accent text-xs hover:underline">
+              <Link2 size={12} /> {profile.website.replace(/^https?:\/\//, '')}
             </a>
           )}
-          <span className="flex items-center gap-1 text-text-muted text-sm">
-            <Calendar size={13} /> {format(new Date(profile.created_at), 'MMMM yyyy', { locale: tr })} tarihinde katıldı
+          <span className="flex items-center gap-1 text-text-muted text-xs">
+            <Calendar size={12} /> {format(new Date(profile.created_at), 'MMMM yyyy', { locale: tr })} tarihinde katıldı
           </span>
-        </div>
-
-        {/* Follower / Following counts */}
-        <div className="flex gap-5">
-          <button type="button" className="text-sm hover:underline" onClick={() => navigate(`/${username}/takip`)}>
-            <span className="font-semibold text-text-primary">{formatCount(profile.following_count)}</span>
-            <span className="text-text-muted ml-1">Takip</span>
-          </button>
-          <button type="button" className="text-sm hover:underline" onClick={() => navigate(`/${username}/takipciler`)}>
-            <span className="font-semibold text-text-primary">{formatCount(followerCount)}</span>
-            <span className="text-text-muted ml-1">Takipçi</span>
-          </button>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="mt-4 border-b border-line flex sticky top-[57px] z-10 bg-bg-base/80 backdrop-blur-md">
+      <div className="border-b border-line flex sticky top-[57px] z-10 bg-bg-base/80 backdrop-blur-md mt-2">
         {(['posts', 'media', 'likes'] as const).map((t) => (
           <button
             key={t}
@@ -320,7 +358,11 @@ export default function Profile() {
       {!canViewPosts ? (
         <LockedProfile isRequested={followState === 'requested'} />
       ) : postsLoading ? (
-        Array.from({ length: 3 }).map((_, i) => <PostSkeleton key={i} />)
+        <div className="grid grid-cols-3 gap-px bg-line mt-px">
+          {Array.from({ length: 9 }).map((_, i) => (
+            <div key={i} className="aspect-square bg-bg-elevated animate-pulse" />
+          ))}
+        </div>
       ) : !posts?.length ? (
         <div className="flex flex-col items-center py-16 text-center px-4">
           <p className="text-text-muted text-sm">
@@ -328,15 +370,15 @@ export default function Profile() {
           </p>
         </div>
       ) : (
-        posts.map((post) => (
-          <PostCard
-            key={post.id}
-            post={post}
-            isLiked={interactions?.likedIds.has(post.id) ?? false}
-            isReposted={interactions?.repostedIds.has(post.id) ?? false}
-            isBookmarked={interactions?.bookmarkedIds.has(post.id) ?? false}
-          />
-        ))
+        <div className="grid grid-cols-3 gap-px bg-line mt-px">
+          {posts.map((post) => (
+            <PostGridCell
+              key={post.id}
+              post={post}
+              onClick={() => navigate(`/gonderi/${post.id}`)}
+            />
+          ))}
+        </div>
       )}
 
       {/* Edit Profile Modal */}
