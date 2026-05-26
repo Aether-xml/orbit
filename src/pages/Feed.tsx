@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import { useVirtualizer } from '@tanstack/react-virtual'
+import { useWindowVirtualizer } from '@tanstack/react-virtual'
 import { Users, Globe } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
@@ -109,10 +109,11 @@ export default function Feed() {
     (p) => !excludedIds?.has(p.user_id)
   )
 
-  // TanStack Virtual — window scroll (AppLayout'ta overflow-y-auto yok, scroll window üzerinden)
-  const virtualizer = useVirtualizer({
+  // TanStack Virtual — window scroll için useWindowVirtualizer
+  // (useVirtualizer + document.documentElement Android Chrome'da scroll
+  //  event'lerini yakalamıyor, sayfa boş veya yarı boş kalıyordu)
+  const virtualizer = useWindowVirtualizer({
     count: hasNextPage ? posts.length + 1 : posts.length,
-    getScrollElement: () => document.documentElement,
     estimateSize: () => 160,
     overscan: 5,
   })

@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { useAuthInit } from '@/hooks/useAuth'
 import { ToastContainer } from '@/components/ui/Toast'
+import ErrorBoundary from '@/components/ErrorBoundary'
 import AppLayout from '@/components/layout/AppLayout'
 import Landing from '@/pages/Landing'
 import Login from '@/pages/Login'
@@ -82,9 +83,11 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AppRoutes />
-      <ToastContainer />
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AppRoutes />
+        <ToastContainer />
+      </BrowserRouter>
+    </ErrorBoundary>
   )
 }

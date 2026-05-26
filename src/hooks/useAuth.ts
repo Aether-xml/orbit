@@ -24,11 +24,12 @@ export function useAuthInit() {
       }
     )
 
-    // Fallback: auth state 5 saniye içinde gelmezse spinner'ı kaldır
+    // Fallback: auth state 15 saniye içinde gelmezse spinner'ı kaldır
+    // (5sn mobile data'da yetersiz kalıyordu — kullanıcı /giris'e haksız redirect oluyordu)
     const fallback = setTimeout(() => {
       setLoading(false)
       setInitialized(true)
-    }, 5000)
+    }, 15000)
 
     return () => {
       subscription.unsubscribe()
