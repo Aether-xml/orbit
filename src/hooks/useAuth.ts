@@ -9,19 +9,8 @@ export function useAuthInit() {
     useAuthStore()
 
   useEffect(() => {
-    // Mevcut oturumu al
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        fetchProfile(session.user.id)
-      } else {
-        setLoading(false)
-        setInitialized(true)
-      }
-    })
-
-    // Auth değişikliklerini dinle
+    // onAuthStateChange INITIAL_SESSION eventi mount'ta hemen tetiklenir —
+    // getSession + onAuthStateChange çift çağrısı race condition yaratıyor, sadece biri yeterli
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
         setSession(session)
@@ -35,7 +24,16 @@ export function useAuthInit() {
       }
     )
 
-    return () => subscription.unsubscribe()
+    // Fallback: auth state 5 saniye içinde gelmezse spinner'ı kaldır
+    const fallback = setTimeout(() => {
+      setLoading(false)
+      setInitialized(true)
+    }, 5000)
+
+    return () => {
+      subscription.unsubscribe()
+      clearTimeout(fallback)
+    }
   }, [])
 
   async function fetchProfile(userId: string) {
@@ -47,7 +45,18 @@ export function useAuthInit() {
       .single()
 
     if (error) {
-      toast.error('Profil yüklenemedi.')
+      // Profil henüz oluşturulmadıysa (trigger gecikmesi) kısa bekle, bir kez daha dene
+      if (error.code === 'PGRST116') {
+        await new Promise((r) => setTimeout(r, 800))
+        const { data: retry } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .single()
+        if (retry) setProfile(retry as Profile)
+      } else {
+        toast.error('Profil yüklenemedi.')
+      }
     } else {
       setProfile(data as Profile)
     }

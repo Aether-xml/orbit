@@ -85,7 +85,7 @@ export default function Register() {
 
     if (signUpError) {
       toast.error(
-        signUpError.message.includes('already registered')
+        signUpError.message.includes('already registered') || signUpError.message.includes('already been registered')
           ? 'Bu e-posta zaten kayıtlı.'
           : 'Kayıt başarısız. Tekrar dene.'
       )
@@ -93,8 +93,17 @@ export default function Register() {
       return
     }
 
+    // Email onayı gerekiyorsa kullanıcıyı bilgilendir
+    if (!authData.session) {
+      toast.info('E-postana onay linki gönderdik. Onayladıktan sonra giriş yapabilirsin.')
+      setIsLoading(false)
+      navigate('/giris')
+      return
+    }
+
     // 2. Profil trigger'ı bazen yavaş çalışır — username'i güncelle
     if (authData.user) {
+      await new Promise((r) => setTimeout(r, 500))
       await supabase
         .from('profiles')
         .update({ username: data.username, display_name: data.username })
