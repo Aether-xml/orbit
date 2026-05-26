@@ -91,14 +91,19 @@ export default function Landing() {
             </div>
           </motion.div>
 
-          {/* Sağ — uygulama mockup */}
+          {/* Sağ — illüstrasyon */}
           <motion.div
             initial={{ opacity: 0, y: 32 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, ease: 'easeOut', delay: 0.1 }}
-            className="hidden lg:block"
+            className="hidden lg:flex items-center justify-center"
           >
-            <AppMockup />
+            <img
+              src="/landing-hero.png"
+              alt=""
+              className="w-full max-w-md select-none"
+              draggable={false}
+            />
           </motion.div>
         </div>
       </main>
@@ -113,75 +118,3 @@ export default function Landing() {
   )
 }
 
-function AppMockup() {
-  return (
-    <div className="relative">
-      {/* Arka plan efekti */}
-      <div className="absolute inset-0 bg-accent-muted rounded-3xl blur-3xl scale-90" />
-
-      {/* Kart */}
-      <div className="relative card p-4 space-y-4 rounded-xl max-w-sm mx-auto">
-        {/* Post 1 */}
-        <MockPost
-          name="Zeynep K."
-          username="zeynep"
-          content="Sonunda algoritma olmadan çalışan bir sosyal medya uygulaması! Takip ettiklerimi gerçekten görüyorum 🎉"
-          likes={142}
-          replies={23}
-        />
-        <div className="border-t border-line" />
-        {/* Post 2 */}
-        <MockPost
-          name="Mert A."
-          username="mert_dev"
-          content="Orbit'te bir haftadır hiç reklam görmüyorum. Dikkatim gerçekten içeriğe gidiyor artık."
-          likes={89}
-          replies={11}
-        />
-        <div className="border-t border-line" />
-        {/* Post 3 */}
-        <MockPost
-          name="Selin Y."
-          username="selin"
-          content="Nova+ rozeti aldım, profil özelleştirmesi gerçekten çok güzel ✨"
-          likes={56}
-          replies={7}
-          isNova
-        />
-      </div>
-    </div>
-  )
-}
-
-type MockPostProps = {
-  name: string
-  username: string
-  content: string
-  likes: number
-  replies: number
-  isNova?: boolean
-}
-
-function MockPost({ name, username, content, likes, replies, isNova }: MockPostProps) {
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <div className="w-8 h-8 rounded-full bg-bg-elevated border border-line flex items-center justify-center text-xs text-text-secondary font-medium flex-shrink-0">
-          {name[0]}
-        </div>
-        <div className="min-w-0">
-          <div className="flex items-center gap-1">
-            <span className="text-text-primary text-sm font-medium truncate">{name}</span>
-            {isNova && <span className="text-accent text-xs">⭐</span>}
-          </div>
-          <span className="text-text-muted text-xs">@{username}</span>
-        </div>
-      </div>
-      <p className="text-text-secondary text-sm leading-relaxed pl-10">{content}</p>
-      <div className="flex items-center gap-4 pl-10">
-        <span className="text-text-muted text-xs">❤️ {likes}</span>
-        <span className="text-text-muted text-xs">💬 {replies}</span>
-      </div>
-    </div>
-  )
-}
