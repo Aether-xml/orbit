@@ -332,24 +332,26 @@ export default function Servers() {
       {/* Header */}
       <div className="sticky top-0 z-10 bg-bg-base/80 backdrop-blur-md border-b border-line px-4 py-3 flex items-center justify-between">
         <h1 className="font-semibold text-text-primary">Sunucular</h1>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setJoinOpen(true)}
-            className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-line text-text-secondary text-sm hover:bg-bg-overlay transition-default"
-          >
-            <Link2 size={14} />
-            <span className="hidden sm:inline">Katıl</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setCreateOpen(true)}
-            className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-bg-base text-sm font-medium hover:bg-accent/90 transition-default"
-          >
-            <Plus size={14} />
-            <span className="hidden sm:inline">Oluştur</span>
-          </button>
-        </div>
+        {myServers.length > 0 && (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setJoinOpen(true)}
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-line text-text-secondary text-sm hover:bg-bg-overlay transition-default"
+            >
+              <Link2 size={14} />
+              <span className="hidden sm:inline">Katıl</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-bg-base text-sm font-medium hover:bg-accent/90 transition-default"
+            >
+              <Plus size={14} />
+              <span className="hidden sm:inline">Oluştur</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* My servers */}
@@ -395,15 +397,15 @@ export default function Servers() {
         <div className="flex flex-col items-center justify-center py-24 px-8 text-center">
           <Globe size={44} className="text-text-muted mb-4 opacity-60" />
           <p className="font-medium text-text-primary mb-1">Henüz sunucu yok</p>
-          <p className="text-text-muted text-sm mb-6">
+          <p className="text-text-primary/70 text-sm mb-6">
             Bir sunucu oluştur veya davet kodu ile katıl
           </p>
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => setJoinOpen(true)}>
+            <Button onClick={() => setJoinOpen(true)}>
               <Link2 size={14} className="mr-1.5" />
               Katıl
             </Button>
-            <Button onClick={() => setCreateOpen(true)}>
+            <Button variant="outline" onClick={() => setCreateOpen(true)}>
               <Plus size={14} className="mr-1.5" />
               Oluştur
             </Button>
