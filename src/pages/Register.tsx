@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Eye, EyeOff, Mail, Lock, AtSign, Check, X, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
@@ -155,7 +155,20 @@ export default function Register() {
                 className="w-full bg-bg-surface border border-line rounded-lg pl-9 pr-4 py-2.5 text-text-primary text-sm placeholder:text-text-muted focus:border-accent transition-default"
               />
             </div>
-            {errors.email && <p className="text-error text-xs">{errors.email.message}</p>}
+            {errors.email && (
+              <AnimatePresence>
+                <motion.p
+                  key="email-error"
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  className="text-error text-xs"
+                >
+                  {errors.email.message}
+                </motion.p>
+              </AnimatePresence>
+            )}
           </div>
 
           {/* Kullanıcı adı */}
@@ -181,21 +194,52 @@ export default function Register() {
                 {usernameStatus === 'checking' && (
                   <Loader2 size={14} className="text-text-muted animate-spin" />
                 )}
-                {usernameStatus === 'available' && (
+                {usernameStatus === 'available' && !errors.username && (
                   <Check size={14} className="text-success" />
                 )}
-                {usernameStatus === 'taken' && (
+                {(usernameStatus === 'taken' || !!errors.username) && (
                   <X size={14} className="text-error" />
                 )}
               </div>
             </div>
-            {errors.username && <p className="text-error text-xs">{errors.username.message}</p>}
-            {usernameStatus === 'taken' && !errors.username && (
-              <p className="text-error text-xs">Bu kullanıcı adı alınmış.</p>
-            )}
-            {usernameStatus === 'available' && !errors.username && (
-              <p className="text-success text-xs">Kullanıcı adı müsait!</p>
-            )}
+            <AnimatePresence>
+              {errors.username && (
+                <motion.p
+                  key="username-error"
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  className="text-error text-xs"
+                >
+                  {errors.username.message}
+                </motion.p>
+              )}
+              {usernameStatus === 'taken' && !errors.username && (
+                <motion.p
+                  key="username-taken"
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  className="text-error text-xs"
+                >
+                  Bu kullanıcı adı alınmış.
+                </motion.p>
+              )}
+              {usernameStatus === 'available' && !errors.username && (
+                <motion.p
+                  key="username-available"
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  className="text-success text-xs"
+                >
+                  Kullanıcı adı müsait!
+                </motion.p>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Şifre */}
@@ -219,7 +263,20 @@ export default function Register() {
                 {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
             </div>
-            {errors.password && <p className="text-error text-xs">{errors.password.message}</p>}
+            {errors.password && (
+              <AnimatePresence>
+                <motion.p
+                  key="password-error"
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  className="text-error text-xs"
+                >
+                  {errors.password.message}
+                </motion.p>
+              </AnimatePresence>
+            )}
           </div>
 
           <button
