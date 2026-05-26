@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { ArrowLeft, Lock, MapPin, Link2, Calendar, UserCheck, Camera } from 'lucide-react'
+import { ArrowLeft, Lock, MapPin, Link2, Calendar, UserCheck, Camera, Settings as SettingsIcon } from 'lucide-react'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
@@ -208,10 +208,20 @@ export default function Profile() {
         <button type="button" onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-full text-text-primary hover:bg-bg-overlay transition-default">
           <ArrowLeft size={20} />
         </button>
-        <div>
-          <h1 className="font-semibold text-text-primary leading-tight">{profile.display_name}</h1>
+        <div className="flex-1 min-w-0">
+          <h1 className="font-semibold text-text-primary leading-tight truncate">{profile.display_name}</h1>
           <p className="text-text-muted text-xs">{formatCount(profile.post_count)} gönderi</p>
         </div>
+        {isOwn && (
+          <button
+            type="button"
+            onClick={() => navigate('/ayarlar')}
+            aria-label="Ayarlar"
+            className="p-2 -mr-2 rounded-full text-text-primary hover:bg-bg-overlay transition-default flex-shrink-0"
+          >
+            <SettingsIcon size={20} />
+          </button>
+        )}
       </div>
 
       {/* Banner */}

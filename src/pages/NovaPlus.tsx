@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Check, Star, Zap, Lock, Palette, BarChart2, Crown } from 'lucide-react'
+import { ArrowLeft, Check, Star, Zap, Palette, BarChart2, Crown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -12,8 +12,6 @@ const features = [
   { icon: <Crown size={16} />,     title: 'Nova+ Rozeti',         desc: 'Profilinde özel ⭐ rozeti taşı',          free: false,   nova: true  },
   { icon: <Palette size={16} />,   title: 'Profil Rengi',         desc: 'Kullanıcı adı renk özelleştirme',        free: false,   nova: true  },
   { icon: <BarChart2 size={16} />, title: 'Gelişmiş İstatistik',  desc: 'Gönderi görüntüleme ve analitik',        free: false,   nova: true  },
-  { icon: <Star size={16} />,      title: 'Öncelikli Görünürlük', desc: 'Keşfet ve öneri sıralamalarında üstün',  free: false,   nova: true  },
-  { icon: <Lock size={16} />,      title: 'Şifreli Mesajlar',     desc: 'Uçtan uca şifreli DM',                   free: false,   nova: true  },
 ] as const
 
 const plans = [
@@ -73,23 +71,18 @@ export default function NovaPlus() {
         <h1 className="font-semibold text-text-primary">Nova+</h1>
       </div>
 
-      {/* Hero */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-[#1A1608] via-bg-base to-[#0E1208] px-6 py-14 text-center">
-        <div className="absolute inset-0 opacity-20" style={{
-          backgroundImage: 'radial-gradient(circle at 50% 0%, #E8C547 0%, transparent 60%)',
-        }} />
-        <div className="relative">
-          <div className="inline-flex items-center gap-2 bg-accent/10 border border-accent/30 rounded-full px-4 py-1.5 mb-5">
-            <Star size={14} className="text-accent fill-accent" />
-            <span className="text-accent text-sm font-semibold">Nova+</span>
-          </div>
-          <h2 className="font-display text-4xl text-text-primary mb-3">
-            Orbit'in tam gücünü<br />açın
-          </h2>
-          <p className="text-text-secondary text-base max-w-xs mx-auto">
-            Daha büyük ifade özgürlüğü, özel özellikler ve Orbit topluluğunun kalbinde bir yer.
-          </p>
+      {/* Hero — flat surface, premium feel via type scale & spacing */}
+      <div className="bg-bg-surface border-b border-line px-6 pt-16 pb-20 text-center">
+        <div className="inline-flex items-center gap-2 bg-accent/10 border border-accent/30 rounded-full px-4 py-1.5 mb-8">
+          <Star size={14} className="text-accent fill-accent" />
+          <span className="text-accent text-sm font-semibold tracking-wide">Nova+</span>
         </div>
+        <h2 className="font-display text-text-primary mb-5 text-5xl leading-[1.05] tracking-tight">
+          Orbit'in tam<br />gücünü aç
+        </h2>
+        <p className="text-text-secondary text-base max-w-xs mx-auto leading-relaxed">
+          Daha büyük ifade özgürlüğü, özel özellikler ve Orbit topluluğunun kalbinde bir yer.
+        </p>
       </div>
 
       {/* Feature comparison */}

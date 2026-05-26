@@ -15,7 +15,7 @@ type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
 
 const variants: Record<Variant, string> = {
   primary: 'bg-accent hover:bg-accent-hover text-text-inverse font-semibold',
-  outline: 'border border-line hover:bg-bg-elevated text-text-primary',
+  outline: 'border border-line bg-bg-surface hover:bg-bg-elevated text-text-primary',
   ghost:   'hover:bg-bg-elevated text-text-secondary hover:text-text-primary',
   danger:  'bg-error/10 hover:bg-error/20 text-error border border-error/20',
 }

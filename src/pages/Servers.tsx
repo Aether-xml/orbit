@@ -401,11 +401,11 @@ export default function Servers() {
             Bir sunucu oluştur veya davet kodu ile katıl
           </p>
           <div className="flex gap-3">
-            <Button onClick={() => setJoinOpen(true)}>
+            <Button size="lg" onClick={() => setJoinOpen(true)}>
               <Link2 size={14} className="mr-1.5" />
               Katıl
             </Button>
-            <Button variant="outline" onClick={() => setCreateOpen(true)}>
+            <Button size="lg" variant="outline" onClick={() => setCreateOpen(true)}>
               <Plus size={14} className="mr-1.5" />
               Oluştur
             </Button>

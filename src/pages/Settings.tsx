@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ChevronRight, Lock, Shield, Bell, Trash2, LogOut, Star, UserX, Award } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Lock, Mail, Shield, Bell, Trash2, LogOut, Star, UserX, Award } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
@@ -18,6 +18,7 @@ import { BADGES, type BadgeId } from '@/components/ui/Badge'
 // ── Schemas ───────────────────────────────────────────
 
 const passwordSchema = z.object({
+  currentPassword: z.string().min(1, 'Mevcut şifreni gir'),
   newPassword:     z.string().min(8, 'En az 8 karakter'),
   confirmPassword: z.string(),
 }).refine((d) => d.newPassword === d.confirmPassword, {
@@ -25,6 +26,12 @@ const passwordSchema = z.object({
   path: ['confirmPassword'],
 })
 type PasswordForm = z.infer<typeof passwordSchema>
+
+const emailSchema = z.object({
+  newEmail: z.string().email('Geçerli bir e-posta gir'),
+  password: z.string().min(1, 'Şifreni gir'),
+})
+type EmailForm = z.infer<typeof emailSchema>
 
 
 // ── Toggle Switch ─────────────────────────────────────
@@ -109,6 +116,7 @@ export default function Settings() {
   const { user, profile, setProfile } = useAuthStore()
 
   const [passwordOpen, setPasswordOpen] = useState(false)
+  const [emailOpen, setEmailOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [blockedOpen, setBlockedOpen] = useState(false)
   const [badgeOpen, setBadgeOpen] = useState(false)
@@ -148,7 +156,7 @@ export default function Settings() {
       <div className="sticky top-0 z-10 bg-bg-base/80 backdrop-blur-md border-b border-line flex items-center gap-4 px-4 py-3">
         <button
           type="button"
-          onClick={() => navigate(-1)}
+          onClick={() => profile ? navigate(`/${profile.username}`) : navigate('/ana-sayfa')}
           className="p-2 -ml-2 rounded-full text-text-primary hover:bg-bg-overlay transition-default"
         >
           <ArrowLeft size={20} />
@@ -184,6 +192,12 @@ export default function Settings() {
 
       {/* Hesap */}
       <SectionHeader title="Hesap" />
+      <SettingsRow
+        icon={<Mail size={18} />}
+        label="E-posta Değiştir"
+        description={user?.email ?? 'E-posta adresini güncelle'}
+        onClick={() => setEmailOpen(true)}
+      />
       <SettingsRow
         icon={<Lock size={18} />}
         label="Şifre Değiştir"
@@ -256,6 +270,9 @@ export default function Settings() {
       {/* Password modal */}
       <PasswordModal open={passwordOpen} onClose={() => setPasswordOpen(false)} />
 
+      {/* Email modal */}
+      <EmailModal open={emailOpen} onClose={() => setEmailOpen(false)} />
+
       {/* Delete account modal */}
       <DeleteModal open={deleteOpen} onClose={() => setDeleteOpen(false)} />
 
@@ -271,13 +288,31 @@ export default function Settings() {
 // ── Password Modal ────────────────────────────────────
 
 function PasswordModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { user } = useAuthStore()
   const [saving, setSaving] = useState(false)
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<PasswordForm>({
+  const { register, handleSubmit, reset, setError, formState: { errors } } = useForm<PasswordForm>({
     resolver: zodResolver(passwordSchema),
   })
 
   const onSubmit = async (data: PasswordForm) => {
+    if (!user?.email) {
+      toast.error('Oturum bilgisi okunamadı')
+      return
+    }
     setSaving(true)
+
+    // Mevcut şifreyi doğrula
+    const { error: verifyError } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: data.currentPassword,
+    })
+
+    if (verifyError) {
+      setSaving(false)
+      setError('currentPassword', { message: 'Mevcut şifre hatalı' })
+      return
+    }
+
     const { error } = await supabase.auth.updateUser({ password: data.newPassword })
     setSaving(false)
     if (error) {
@@ -293,20 +328,104 @@ function PasswordModal({ open, onClose }: { open: boolean; onClose: () => void }
     <Modal open={open} onClose={onClose} title="Şifre Değiştir" size="sm">
       <form onSubmit={handleSubmit(onSubmit)} className="p-5 space-y-4">
         <Input
+          label="Mevcut Şifre"
+          type="password"
+          autoComplete="current-password"
+          error={errors.currentPassword?.message}
+          {...register('currentPassword')}
+        />
+        <Input
           label="Yeni Şifre"
           type="password"
+          autoComplete="new-password"
           error={errors.newPassword?.message}
           {...register('newPassword')}
         />
         <Input
           label="Şifreyi Onayla"
           type="password"
+          autoComplete="new-password"
           error={errors.confirmPassword?.message}
           {...register('confirmPassword')}
         />
         <div className="flex gap-2 pt-1">
           <Button type="button" variant="outline" className="flex-1" onClick={onClose}>İptal</Button>
           <Button type="submit" className="flex-1" loading={saving}>Kaydet</Button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+// ── Email Modal ───────────────────────────────────────
+
+function EmailModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { user } = useAuthStore()
+  const [saving, setSaving] = useState(false)
+  const { register, handleSubmit, reset, setError, formState: { errors } } = useForm<EmailForm>({
+    resolver: zodResolver(emailSchema),
+  })
+
+  const onSubmit = async (data: EmailForm) => {
+    if (!user?.email) {
+      toast.error('Oturum bilgisi okunamadı')
+      return
+    }
+    if (data.newEmail.toLowerCase() === user.email.toLowerCase()) {
+      setError('newEmail', { message: 'Bu zaten mevcut e-postan' })
+      return
+    }
+    setSaving(true)
+
+    // Şifre ile kimliği doğrula
+    const { error: verifyError } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: data.password,
+    })
+
+    if (verifyError) {
+      setSaving(false)
+      setError('password', { message: 'Şifre hatalı' })
+      return
+    }
+
+    const { error } = await supabase.auth.updateUser({ email: data.newEmail })
+    setSaving(false)
+    if (error) {
+      toast.error('E-posta güncellenemedi')
+    } else {
+      toast.success('Onay bağlantısı yeni e-posta adresine gönderildi')
+      reset()
+      onClose()
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="E-posta Değiştir" size="sm">
+      <form onSubmit={handleSubmit(onSubmit)} className="p-5 space-y-4">
+        <div className="text-text-muted text-xs">
+          Mevcut: <span className="text-text-secondary">{user?.email ?? '—'}</span>
+        </div>
+        <Input
+          label="Yeni E-posta"
+          type="email"
+          autoComplete="email"
+          error={errors.newEmail?.message}
+          {...register('newEmail')}
+        />
+        <Input
+          label="Şifren"
+          type="password"
+          autoComplete="current-password"
+          error={errors.password?.message}
+          {...register('password')}
+        />
+        <p className="text-text-muted text-xs">
+          Onay bağlantısı yeni adresine gönderilecek. Bağlantıya tıklayana kadar değişiklik geçerli olmaz.
+        </p>
+        <div className="flex gap-2 pt-1">
+          <Button type="button" variant="outline" className="flex-1" onClick={onClose}>İptal</Button>
+          <Button type="submit" className="flex-1" loading={saving}>Gönder</Button>
         </div>
       </form>
     </Modal>

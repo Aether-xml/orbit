@@ -44,7 +44,7 @@ export default function MobileNav() {
 
         {/* Profil */}
         <NavLink
-          to={profile ? `/${profile.username}` : '/ayarlar'}
+          to={profile?.username ? `/${profile.username}` : '/ana-sayfa'}
           className={({ isActive }) =>
             cn(
               'flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg transition-default min-w-[44px] min-h-[44px] justify-center',
