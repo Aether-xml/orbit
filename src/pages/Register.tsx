@@ -8,6 +8,7 @@ import { Eye, EyeOff, Mail, Lock, AtSign, Check, X, Loader2 } from 'lucide-react
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { toast } from '@/store/uiStore'
+import TurnstileWidget from '@/components/ui/TurnstileWidget'
 
 const registerSchema = z.object({
   email: z.string().email('Geçerli bir e-posta girin'),
@@ -34,6 +35,7 @@ export default function Register() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle')
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
 
   const {
     register,
@@ -79,7 +81,22 @@ export default function Register() {
       toast.error('Bu kullanıcı adı alınmış.')
       return
     }
+    if (!turnstileToken) {
+      toast.error('Lütfen robot kontrolünü tamamla.')
+      return
+    }
     setIsLoading(true)
+
+    // Turnstile token doğrulama
+    const { data: verifyData, error: verifyError } = await supabase.functions.invoke('verify-turnstile', {
+      body: { token: turnstileToken },
+    })
+    if (verifyError || !verifyData?.success) {
+      toast.error('Robot kontrolü başarısız. Lütfen tekrar dene.')
+      setTurnstileToken(null)
+      setIsLoading(false)
+      return
+    }
 
     // 1. Auth kaydı
     const { data: authData, error: signUpError } = await supabase.auth.signUp({
@@ -330,9 +347,16 @@ export default function Register() {
             )}
           </div>
 
+          {/* Turnstile */}
+          <TurnstileWidget
+            onSuccess={setTurnstileToken}
+            onExpire={() => setTurnstileToken(null)}
+            onError={() => { setTurnstileToken(null); toast.error('Robot kontrolü yüklenemedi.') }}
+          />
+
           <button
             type="submit"
-            disabled={isLoading || usernameStatus === 'taken'}
+            disabled={isLoading || usernameStatus === 'taken' || !turnstileToken}
             className="w-full bg-accent hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed text-text-inverse font-semibold py-3 rounded-lg transition-default"
           >
             {isLoading ? 'Kayıt olunuyor…' : 'Kayıt Ol'}

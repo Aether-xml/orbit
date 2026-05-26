@@ -8,6 +8,7 @@ import { Eye, EyeOff, Mail, Lock } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { toast } from '@/store/uiStore'
+import TurnstileWidget from '@/components/ui/TurnstileWidget'
 
 const loginSchema = z.object({
   email: z.string().email('Geçerli bir e-posta girin'),
@@ -21,6 +22,7 @@ export default function Login() {
   const { loginWithGoogle } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
 
   const {
     register,
@@ -29,7 +31,23 @@ export default function Login() {
   } = useForm<LoginForm>({ resolver: zodResolver(loginSchema) })
 
   const onSubmit = async (data: LoginForm) => {
+    if (!turnstileToken) {
+      toast.error('Lütfen robot kontrolünü tamamla.')
+      return
+    }
     setIsLoading(true)
+
+    // Turnstile token doğrulama
+    const { data: verifyData, error: verifyError } = await supabase.functions.invoke('verify-turnstile', {
+      body: { token: turnstileToken },
+    })
+    if (verifyError || !verifyData?.success) {
+      toast.error('Robot kontrolü başarısız. Lütfen tekrar dene.')
+      setTurnstileToken(null)
+      setIsLoading(false)
+      return
+    }
+
     const { error } = await supabase.auth.signInWithPassword({
       email: data.email,
       password: data.password,
@@ -145,10 +163,17 @@ export default function Login() {
             )}
           </div>
 
+          {/* Turnstile */}
+          <TurnstileWidget
+            onSuccess={setTurnstileToken}
+            onExpire={() => setTurnstileToken(null)}
+            onError={() => { setTurnstileToken(null); toast.error('Robot kontrolü yüklenemedi.') }}
+          />
+
           {/* Giriş butonu */}
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || !turnstileToken}
             className="w-full bg-accent hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed text-text-inverse font-semibold py-3 rounded-lg transition-default"
           >
             {isLoading ? 'Giriş yapılıyor…' : 'Giriş Yap'}
