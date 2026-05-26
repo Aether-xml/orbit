@@ -9,14 +9,24 @@ export function useAuthInit() {
     useAuthStore()
 
   useEffect(() => {
-    // onAuthStateChange INITIAL_SESSION eventi mount'ta hemen tetiklenir —
-    // getSession + onAuthStateChange çift çağrısı race condition yaratıyor, sadece biri yeterli
+    let mounted = true
+
+    // ÖNEMLİ: onAuthStateChange callback'i SENKRON olmalı ve İÇİNDE BAŞKA
+    // SUPABASE ÇAĞRISI YAPILMAMALI. supabase-js 2.45+ auth mutex'i tutar;
+    // callback bitmeden başka call yapılırsa deadlock olur → refresh sonrası
+    // tüm sorgular sonsuza dek takılır ("sayfa yüklenmiyor").
+    // Çözüm: setTimeout(_, 0) ile bir sonraki tick'e ertele.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      (_event, session) => {
+        if (!mounted) return
         setSession(session)
         setUser(session?.user ?? null)
+
         if (session?.user) {
-          await fetchProfile(session.user.id)
+          const userId = session.user.id
+          setTimeout(() => {
+            if (mounted) void fetchProfile(userId)
+          }, 0)
         } else {
           reset()
           setInitialized(true)
@@ -27,11 +37,13 @@ export function useAuthInit() {
     // Fallback: auth state 15 saniye içinde gelmezse spinner'ı kaldır
     // (5sn mobile data'da yetersiz kalıyordu — kullanıcı /giris'e haksız redirect oluyordu)
     const fallback = setTimeout(() => {
+      if (!mounted) return
       setLoading(false)
       setInitialized(true)
     }, 15000)
 
     return () => {
+      mounted = false
       subscription.unsubscribe()
       clearTimeout(fallback)
     }
