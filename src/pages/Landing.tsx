@@ -12,21 +12,23 @@ export default function Landing() {
   return (
     <div className="min-h-dvh bg-bg-base flex flex-col">
       {/* Nav */}
-      <header className="flex items-center justify-between px-6 py-4 max-w-6xl mx-auto w-full">
-        <span className="font-display text-2xl text-text-primary">Orbit</span>
-        <div className="flex items-center gap-3">
-          <Link
-            to="/giris"
-            className="text-text-secondary hover:text-text-primary transition-default text-sm font-medium"
-          >
-            Giriş Yap
-          </Link>
-          <Link
-            to="/kayit"
-            className="bg-accent hover:bg-accent-hover text-text-inverse text-sm font-semibold px-4 py-2 rounded-full transition-default"
-          >
-            Kayıt Ol
-          </Link>
+      <header className="sticky top-0 z-10 bg-bg-base border-b border-line">
+        <div className="flex items-center justify-between px-6 py-4 max-w-6xl mx-auto">
+          <span className="font-display text-2xl text-text-primary">Orbit</span>
+          <div className="flex items-center gap-3">
+            <Link
+              to="/giris"
+              className="text-text-secondary hover:text-text-primary transition-default text-sm font-medium"
+            >
+              Giriş Yap
+            </Link>
+            <Link
+              to="/kayit"
+              className="bg-accent hover:bg-accent-hover text-text-inverse text-sm font-semibold px-4 py-2 rounded-full transition-default"
+            >
+              Kayıt Ol
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -111,7 +113,7 @@ export default function Landing() {
       {/* Footer */}
       <footer className="border-t border-line py-6 px-6">
         <p className="text-text-muted text-sm text-center">
-          © 2025 Orbit. Tüm hakları saklıdır.
+          © 2026 Orbit. Tüm hakları saklıdır.
         </p>
       </footer>
     </div>
