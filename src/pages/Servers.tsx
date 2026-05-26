@@ -336,7 +336,7 @@ export default function Servers() {
           <button
             type="button"
             onClick={() => setJoinOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-line text-text-secondary text-sm hover:bg-bg-overlay transition-default"
+            className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-line text-text-secondary text-sm hover:bg-bg-overlay transition-default"
           >
             <Link2 size={14} />
             <span className="hidden sm:inline">Katıl</span>
@@ -344,7 +344,7 @@ export default function Servers() {
           <button
             type="button"
             onClick={() => setCreateOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-bg-base text-sm font-medium hover:bg-accent/90 transition-default"
+            className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent text-bg-base text-sm font-medium hover:bg-accent/90 transition-default"
           >
             <Plus size={14} />
             <span className="hidden sm:inline">Oluştur</span>

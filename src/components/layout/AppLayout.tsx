@@ -12,9 +12,9 @@ import { useAuthStore } from '@/store/authStore'
 const noRightPanel = ['/mesajlar', '/reels', '/sunucular']
 
 const pageVariants = {
-  initial: { opacity: 0, y: 8 },
-  animate: { opacity: 1, y: 0 },
-  exit:    { opacity: 0, y: -4 },
+  initial: { opacity: 0 },
+  animate: { opacity: 1 },
+  exit:    { opacity: 0 },
 }
 
 export default function AppLayout() {
@@ -62,15 +62,14 @@ export default function AppLayout() {
         <div className={`mx-auto flex ${showRight ? 'max-w-[1120px]' : 'max-w-[800px]'}`}>
           {/* Orta feed */}
           <main className="flex-1 min-w-0 min-h-dvh border-x border-line">
-            <AnimatePresence mode="wait">
+            <AnimatePresence mode="popLayout">
               <motion.div
                 key={pathname}
                 variants={pageVariants}
                 initial="initial"
                 animate="animate"
                 exit="exit"
-                transition={{ duration: 0.15, ease: 'easeOut' }}
-                className="min-h-dvh"
+                transition={{ duration: 0.12, ease: 'easeInOut' }}
               >
                 <Outlet />
               </motion.div>

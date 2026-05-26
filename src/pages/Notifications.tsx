@@ -113,53 +113,54 @@ export default function Notifications() {
 
   return (
     <div className="min-h-dvh">
-      <div className="sticky top-[52px] z-10 bg-bg-base/80 backdrop-blur-md border-b border-line px-4 py-3 flex items-center justify-between">
-        <h1 className="font-semibold text-text-primary">Bildirimler</h1>
-        {notifications && notifications.some((n) => !n.is_read) && (
-          <button
-            type="button"
-            onClick={() => void handleMarkAllRead()}
-            className="p-2 rounded-full text-text-muted hover:text-text-primary hover:bg-bg-elevated transition-default"
-            title="Tümünü okundu işaretle"
-          >
-            <CheckCheck size={18} />
-          </button>
-        )}
-      </div>
-
-      {/* Tab bar */}
-      <div className="flex border-b border-line sticky top-[52px] z-10 bg-bg-base/80 backdrop-blur-md">
-        {TABS.map(tab => {
-          const tabNotifs = (() => {
-            const base = notifications ?? []
-            switch (tab.id) {
-              case 'likes':   return base.filter(n => n.type === 'like' || n.type === 'repost')
-              case 'follows': return base.filter(n => n.type === 'follow' || n.type === 'follow_request' || n.type === 'follow_accepted')
-              case 'replies': return base.filter(n => n.type === 'reply' || n.type === 'comment' || n.type === 'mention' || n.type === 'quote')
-              default:        return base
-            }
-          })()
-          const hasUnread = tabNotifs.some(n => !n.is_read)
-          return (
+      {/* Başlık + Tab bar — tek sticky blok, boşluk kalmaz */}
+      <div className="sticky top-0 z-10 bg-bg-base/80 backdrop-blur-md border-b border-line">
+        <div className="px-4 py-3 flex items-center justify-between">
+          <h1 className="font-semibold text-text-primary">Bildirimler</h1>
+          {notifications && notifications.some((n) => !n.is_read) && (
             <button
-              key={tab.id}
               type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                'flex-1 py-3 text-sm font-medium transition-default relative',
-                activeTab === tab.id
-                  ? 'text-text-primary'
-                  : 'text-text-muted hover:text-text-secondary hover:bg-bg-overlay'
-              )}
+              onClick={() => void handleMarkAllRead()}
+              className="p-2 rounded-full text-text-muted hover:text-text-primary hover:bg-bg-elevated transition-default"
+              title="Tümünü okundu işaretle"
             >
-              {tab.label}
-              {hasUnread && <span className="ml-1 w-1.5 h-1.5 rounded-full bg-accent inline-block" />}
-              {activeTab === tab.id && (
-                <span className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-accent rounded-full" />
-              )}
+              <CheckCheck size={18} />
             </button>
-          )
-        })}
+          )}
+        </div>
+        <div className="flex">
+          {TABS.map(tab => {
+            const tabNotifs = (() => {
+              const base = notifications ?? []
+              switch (tab.id) {
+                case 'likes':   return base.filter(n => n.type === 'like' || n.type === 'repost')
+                case 'follows': return base.filter(n => n.type === 'follow' || n.type === 'follow_request' || n.type === 'follow_accepted')
+                case 'replies': return base.filter(n => n.type === 'reply' || n.type === 'comment' || n.type === 'mention' || n.type === 'quote')
+                default:        return base
+              }
+            })()
+            const hasUnread = tabNotifs.some(n => !n.is_read)
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  'flex-1 py-3 text-sm font-medium transition-default relative',
+                  activeTab === tab.id
+                    ? 'text-text-primary'
+                    : 'text-text-muted hover:text-text-secondary hover:bg-bg-overlay'
+                )}
+              >
+                {tab.label}
+                {hasUnread && <span className="ml-1 w-1.5 h-1.5 rounded-full bg-accent inline-block" />}
+                {activeTab === tab.id && (
+                  <span className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-accent rounded-full" />
+                )}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {isLoading ? (
