@@ -367,13 +367,17 @@ export default function Profile() {
 
       {/* Sticky header */}
       <div className="sticky top-0 z-10 bg-bg-base/80 backdrop-blur-md border-b border-line h-14 flex items-center px-2 gap-2">
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          className="p-2 rounded-full text-text-primary hover:bg-bg-overlay transition-default flex-shrink-0"
-        >
-          <ArrowLeft size={20} />
-        </button>
+        {isOwn ? (
+          <div className="w-10 h-10 flex-shrink-0" />
+        ) : (
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="p-2 rounded-full text-text-primary hover:bg-bg-overlay transition-default flex-shrink-0"
+          >
+            <ArrowLeft size={20} />
+          </button>
+        )}
         <span className="flex-1 text-center font-semibold text-text-primary text-sm truncate px-2">
           {profile.display_name}
         </span>

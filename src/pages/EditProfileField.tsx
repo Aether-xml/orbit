@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -16,6 +16,24 @@ type FieldConfig = {
   maxLength: number
   hint?: string
   stub?: boolean
+  isUrl?: boolean
+}
+
+function isValidUrl(val: string): boolean {
+  if (!val.trim()) return true
+  try {
+    const normalized = /^https?:\/\//i.test(val) ? val : `https://${val}`
+    const u = new URL(normalized)
+    return u.hostname.includes('.')
+  } catch {
+    return false
+  }
+}
+
+function normalizeUrl(val: string): string {
+  const trimmed = val.trim()
+  if (!trimmed) return ''
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
 }
 
 const FIELDS: Record<string, FieldConfig> = {
@@ -49,6 +67,7 @@ const FIELDS: Record<string, FieldConfig> = {
     placeholder: 'https://siteni.com',
     dbKey: 'website',
     maxLength: 100,
+    isUrl: true,
   },
   konum: {
     title: 'Konum',
@@ -95,7 +114,8 @@ export default function EditProfileField() {
   }
 
   const initialValue = getInitialValue()
-  const hasChanges = !config.stub && value.trim() !== initialValue
+  const urlValid = config.isUrl ? isValidUrl(value) : true
+  const hasChanges = !config.stub && value.trim() !== initialValue && urlValid
 
   const handleSave = async () => {
     if (!user || !profile || !hasChanges || saving) return
@@ -107,7 +127,7 @@ export default function EditProfileField() {
       if (config.dbKey === 'display_name') update.display_name = trimmed
       else if (config.dbKey === 'username') update.username = trimmed
       else if (config.dbKey === 'location') update.location = nullable
-      else if (config.dbKey === 'website') update.website = nullable
+      else if (config.dbKey === 'website') update.website = trimmed ? normalizeUrl(trimmed) : null
 
       const { error } = await supabase.from('profiles').update(update).eq('id', user.id)
       if (error) {
@@ -157,26 +177,46 @@ export default function EditProfileField() {
           <label className="block text-text-muted text-xs font-semibold uppercase tracking-wider">
             {config.label}
           </label>
-          <input
-            type="text"
-            value={value}
-            onChange={(e) => setValue(e.target.value.slice(0, config.maxLength))}
-            placeholder={config.placeholder}
-            disabled={config.stub}
-            autoFocus={!config.stub}
-            className={cn(
-              'w-full bg-bg-surface rounded-xl px-4 py-3.5 text-text-primary text-sm',
-              'placeholder:text-text-muted transition-default',
-              'border focus:outline-none',
-              config.stub
-                ? 'border-line opacity-50 cursor-not-allowed'
-                : value !== initialValue
-                ? 'border-accent'
-                : 'border-line focus:border-accent'
+          <div className="relative">
+            <input
+              type="text"
+              value={value}
+              onChange={(e) => setValue(e.target.value.slice(0, config.maxLength))}
+              placeholder={config.placeholder}
+              disabled={config.stub}
+              autoFocus={!config.stub}
+              className={cn(
+                'w-full bg-bg-surface rounded-xl px-4 py-3.5 text-text-primary text-sm',
+                'placeholder:text-text-muted transition-default',
+                'border focus:outline-none',
+                config.isUrl && value.trim() && !urlValid
+                  ? 'border-error pr-10'
+                  : config.isUrl && value.trim() && urlValid
+                  ? 'border-success pr-10'
+                  : config.stub
+                  ? 'border-line opacity-50 cursor-not-allowed'
+                  : value !== initialValue
+                  ? 'border-accent'
+                  : 'border-line focus:border-accent'
+              )}
+            />
+            {config.isUrl && value.trim() && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                {urlValid
+                  ? <CheckCircle2 size={16} className="text-success" />
+                  : <XCircle size={16} className="text-error" />
+                }
+              </span>
             )}
-          />
+          </div>
           <div className="flex items-start justify-between gap-2">
-            {config.hint && (
+            {config.isUrl && value.trim() && !urlValid && (
+              <p className="text-error text-xs leading-relaxed">Geçerli bir URL gir (örn. https://site.com)</p>
+            )}
+            {config.isUrl && value.trim() && urlValid && (
+              <p className="text-success text-xs leading-relaxed">Geçerli URL</p>
+            )}
+            {!config.isUrl && config.hint && (
               <p className="text-text-muted text-xs leading-relaxed">{config.hint}</p>
             )}
             {!config.stub && (
