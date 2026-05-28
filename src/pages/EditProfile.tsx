@@ -256,22 +256,6 @@ export default function EditProfile() {
           </div>
         </section>
 
-        {/* Bottom links */}
-        <section className="border-t border-line pt-1">
-          <button
-            type="button"
-            className="w-full py-4 text-left text-text-muted text-sm hover:text-text-secondary transition-default"
-          >
-            Profesyonel Hesaba Geç
-          </button>
-          <div className="border-t border-line/40" />
-          <button
-            type="button"
-            className="w-full py-4 text-left text-text-muted text-sm hover:text-text-secondary transition-default"
-          >
-            Kişisel Bilgi Ayarları
-          </button>
-        </section>
       </div>
     </div>
   )
