@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Lock, MapPin, Link2, Calendar, UserCheck, Camera, Settings as SettingsIcon, Images, Heart } from 'lucide-react'
 import { format } from 'date-fns'
@@ -16,22 +13,12 @@ import { toast } from '@/store/uiStore'
 import type { Profile as ProfileType, PostWithAuthor } from '@/types/database'
 import Avatar from '@/components/ui/Avatar'
 import Button from '@/components/ui/Button'
-import Modal from '@/components/ui/Modal'
-import Input from '@/components/ui/Input'
 import Badge, { VerifiedIcon } from '@/components/ui/Badge'
 import type { BadgeId } from '@/components/ui/Badge'
 import { ProfileSkeleton } from '@/components/ui/Skeleton'
 
 type FollowState = 'none' | 'following' | 'requested'
 type ProfileTab = 'posts' | 'media' | 'likes'
-
-const editSchema = z.object({
-  display_name: z.string().min(1, 'Görünen ad gerekli').max(50, 'En fazla 50 karakter'),
-  bio: z.string().max(160, 'En fazla 160 karakter').optional(),
-  website: z.string().max(100).optional(),
-  location: z.string().max(30, 'En fazla 30 karakter').optional(),
-})
-type EditForm = z.infer<typeof editSchema>
 
 // ── Grid cell ─────────────────────────────────────────
 
@@ -165,7 +152,6 @@ export default function Profile() {
   const queryClient = useQueryClient()
 
   const [tab, setTab] = useState<ProfileTab>('posts')
-  const [editOpen, setEditOpen] = useState(false)
   const [followState, setFollowState] = useState<FollowState>('none')
   const [followerCount, setFollowerCount] = useState(0)
 
@@ -501,7 +487,7 @@ export default function Profile() {
       {/* Action buttons */}
       <div className="px-4 mt-3">
         {isOwn ? (
-          <Button variant="outline" className="w-full" onClick={() => setEditOpen(true)}>
+          <Button variant="outline" className="w-full" onClick={() => navigate('/profil-duzenle')}>
             Profili Düzenle
           </Button>
         ) : (
@@ -610,221 +596,7 @@ export default function Profile() {
         </div>
       )}
 
-      {/* Edit Profile Modal */}
-      <EditProfileModal
-        open={editOpen}
-        onClose={() => setEditOpen(false)}
-        profile={profile}
-        onSave={(updated) => {
-          setMyProfile({ ...profile, ...updated })
-          void queryClient.invalidateQueries({ queryKey: ['profile', username] })
-          setEditOpen(false)
-          toast.success('Profil güncellendi')
-        }}
-      />
     </div>
   )
 }
 
-// ── Edit Profile Modal ────────────────────────────────
-
-function EditProfileModal({
-  open,
-  onClose,
-  profile,
-  onSave,
-}: {
-  open: boolean
-  onClose: () => void
-  profile: ProfileType
-  onSave: (data: Partial<ProfileType>) => void
-}) {
-  const { user } = useAuthStore()
-  const [saving, setSaving] = useState(false)
-  const [avatarFile, setAvatarFile] = useState<File | null>(null)
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
-  const [bannerFile, setBannerFile] = useState<File | null>(null)
-  const [bannerPreview, setBannerPreview] = useState<string | null>(null)
-  const [accentColor, setAccentColor] = useState(profile.profile_accent ?? '#6C63FF')
-  const avatarInputRef = useRef<HTMLInputElement>(null)
-  const bannerInputRef = useRef<HTMLInputElement>(null)
-
-  const ACCENT_PRESETS = ['#6C63FF', '#E05A5A', '#4CAF82', '#E8C547', '#5A9FE0', '#E07BA0', '#F07A3B']
-
-  const { register, handleSubmit, formState: { errors } } = useForm<EditForm>({
-    resolver: zodResolver(editSchema),
-    defaultValues: {
-      display_name: profile.display_name,
-      bio: profile.bio ?? '',
-      website: profile.website ?? '',
-      location: profile.location ?? '',
-    },
-  })
-
-  const pickFile = (ref: React.RefObject<HTMLInputElement | null>, onPick: (file: File) => void) => {
-    const input = ref.current
-    if (!input) return
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0]
-      if (file) onPick(file)
-      input.value = ''
-    }
-    input.click()
-  }
-
-  const onSubmit = async (data: EditForm) => {
-    if (!user) return
-    setSaving(true)
-
-    let avatar_url = profile.avatar_url
-    let banner_url = profile.banner_url
-
-    try {
-      if (avatarFile) avatar_url = await uploadFile('avatars', avatarFile, uniquePath(user.id, avatarFile))
-      if (bannerFile) banner_url = await uploadFile('banners', bannerFile, uniquePath(user.id, bannerFile))
-    } catch {
-      toast.error('Resim yüklenemedi')
-      setSaving(false)
-      return
-    }
-
-    const { error } = await supabase.from('profiles').update({
-      display_name: data.display_name,
-      bio: data.bio || null,
-      website: data.website || null,
-      location: data.location || null,
-      avatar_url,
-      banner_url,
-      ...(profile.is_nova_plus ? { profile_accent: accentColor } : {}),
-    }).eq('id', user.id)
-
-    setSaving(false)
-    if (error) {
-      toast.error('Profil güncellenemedi')
-    } else {
-      onSave({ ...data, avatar_url, banner_url, ...(profile.is_nova_plus ? { profile_accent: accentColor } : {}) })
-    }
-  }
-
-  const currentAvatar = avatarPreview ?? profile.avatar_url
-  const currentBanner = bannerPreview ?? profile.banner_url
-
-  return (
-    <Modal open={open} onClose={onClose} title="Profili Düzenle" size="sm">
-      <form onSubmit={handleSubmit(onSubmit)}>
-        {/* Banner + avatar picker */}
-        <div className="relative mb-14">
-          <button
-            type="button"
-            onClick={() => pickFile(bannerInputRef, (f) => { setBannerFile(f); setBannerPreview(URL.createObjectURL(f)) })}
-            className="w-full h-24 bg-bg-surface overflow-hidden group relative"
-          >
-            {currentBanner && <img src={currentBanner} alt="" className="w-full h-full object-cover" />}
-            <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-              <Camera size={20} className="text-white" />
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => pickFile(avatarInputRef, (f) => { setAvatarFile(f); setAvatarPreview(URL.createObjectURL(f)) })}
-            className="absolute -bottom-10 left-4 w-20 h-20 rounded-full border-4 border-bg-base overflow-hidden bg-bg-elevated group"
-          >
-            {currentAvatar ? (
-              <img src={currentAvatar} alt="" className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-text-muted text-2xl font-bold">
-                {profile.display_name[0]?.toUpperCase()}
-              </div>
-            )}
-            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-full">
-              <Camera size={16} className="text-white" />
-            </div>
-          </button>
-        </div>
-
-        <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" />
-        <input ref={bannerInputRef} type="file" accept="image/*" className="hidden" />
-
-        <div className="px-5 pb-5 space-y-4">
-          <Input
-            label="Görünen Ad"
-            error={errors.display_name?.message}
-            {...register('display_name')}
-          />
-
-          <div className="space-y-1.5">
-            <label className="block text-text-secondary text-sm">Bio</label>
-            <textarea
-              rows={3}
-              placeholder="Kendini tanıt..."
-              className="w-full bg-bg-surface border border-line rounded-lg px-4 py-2.5 text-text-primary text-sm placeholder:text-text-muted transition-default focus:border-accent focus:outline-none resize-none"
-              {...register('bio')}
-            />
-            {errors.bio && <p className="text-error text-xs">{errors.bio.message}</p>}
-          </div>
-
-          <Input
-            label="Web Sitesi"
-            placeholder="https://..."
-            error={errors.website?.message}
-            leftIcon={<Link2 size={14} />}
-            {...register('website')}
-          />
-
-          <Input
-            label="Konum"
-            placeholder="Şehir, Ülke"
-            error={errors.location?.message}
-            leftIcon={<MapPin size={14} />}
-            {...register('location')}
-          />
-
-          {profile.is_nova_plus && (
-            <div className="space-y-2">
-              <label className="block text-text-secondary text-sm">
-                Profil Rengi <span className="text-accent text-xs ml-1">Nova+</span>
-              </label>
-              <div className="flex items-center gap-2 flex-wrap">
-                {ACCENT_PRESETS.map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => setAccentColor(color)}
-                    className={cn(
-                      'w-7 h-7 rounded-full border-2 transition-transform',
-                      accentColor === color ? 'border-text-primary scale-110' : 'border-transparent'
-                    )}
-                    style={{ backgroundColor: color }}
-                  />
-                ))}
-                <label className="relative w-7 h-7 rounded-full overflow-hidden border border-line cursor-pointer" title="Özel renk">
-                  <span
-                    className="absolute inset-0 rounded-full"
-                    style={{ background: 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)' }}
-                  />
-                  <input
-                    type="color"
-                    value={accentColor}
-                    onChange={(e) => setAccentColor(e.target.value)}
-                    className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-                  />
-                </label>
-              </div>
-              <p className="text-text-muted text-xs">Takipçi sayısı, butonlar ve vurgular bu renge bürünür</p>
-            </div>
-          )}
-
-          <div className="flex gap-2 pt-1">
-            <Button type="button" variant="outline" className="flex-1" onClick={onClose}>
-              İptal
-            </Button>
-            <Button type="submit" className="flex-1" loading={saving}>
-              Kaydet
-            </Button>
-          </div>
-        </div>
-      </form>
-    </Modal>
-  )
-}

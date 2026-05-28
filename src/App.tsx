@@ -19,6 +19,8 @@ import Reels from '@/pages/Reels'
 import CreateReel from '@/pages/CreateReel'
 import NovaPlus from '@/pages/NovaPlus'
 import Settings from '@/pages/Settings'
+import EditProfile from '@/pages/EditProfile'
+import EditProfileField from '@/pages/EditProfileField'
 import Servers from '@/pages/Servers'
 import ServerPage from '@/pages/ServerPage'
 import Onboarding from '@/pages/Onboarding'
@@ -78,6 +80,8 @@ function AppRoutes() {
       {/* Full-screen routes (no AppLayout) */}
       <Route path="/reels"          element={<ProtectedRoute><Reels /></ProtectedRoute>} />
       <Route path="/reels/olustur"  element={<ProtectedRoute><CreateReel /></ProtectedRoute>} />
+      <Route path="/profil-duzenle" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
+      <Route path="/profil-duzenle/:field" element={<ProtectedRoute><EditProfileField /></ProtectedRoute>} />
       <Route path="/onboarding"     element={<ProtectedRoute skipSetupCheck><Onboarding /></ProtectedRoute>} />
       <Route path="/google-setup"   element={<ProtectedRoute skipSetupCheck><GoogleSetup /></ProtectedRoute>} />
 
